@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>매장 주문량 예측 검토</title>
+<style>
+  :root { color-scheme:light; --paper:#f5f4ef; --white:#fff; --ink:#242c38; --muted:#505d6f; --line:#dfe4e9; --indigo:#384d91; --teal:#21675d; --selected:#7a410b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.55 "Geist","Malgun Gothic",system-ui,sans-serif; word-break:keep-all; }
+  main { max-width:1240px; margin:auto; padding:0 28px 38px; }
+  header { background:#243550; color:#fcfaff; padding:32px 0 25px; }
+  .masthead { max-width:1240px; margin:auto; padding:0 28px; }
+  h1,h2,h3,p,figure,dl,dd { margin:0; }
+  h1 { font-size:clamp(29px, 4.5vw, 45px); line-height:1.2; letter-spacing:-.05em; }
+  h2 { font-size:25px; letter-spacing:-.045em; }
+  h3 { font-size:18px; letter-spacing:-.03em; }
+  header nav { display:flex; flex-wrap:wrap; gap:8px 22px; margin-top:15px; }
+  header a { color:#e3eaf8; text-underline-offset:4px; }
+  .masthead-content { display:flex; justify-content:space-between; align-items:end; flex-wrap:wrap; gap:12px 24px; }
+  .global-filter { display:flex; align-items:center; gap:8px; }
+  .global-filter label { font-weight:650; }
+  section { margin-top:25px; }
+  .section-head { display:flex; align-items:baseline; flex-wrap:wrap; gap:1px 14px; margin-bottom:10px; }
+  .period,.subtle { color:var(--muted); font-size:13px; }
+  .panel { background:var(--white); border:1px solid var(--line); border-radius:12px; padding:17px 20px; }
+  .training { display:grid; grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr); gap:12px; }
+  .training .panel { min-width:0; display:flex; flex-direction:column; }
+  .context { color:var(--muted); font-size:13px; margin:3px 0 9px; }
+  .bar-chart { display:grid; gap:4px; margin:5px 0 13px; }
+  .bar-button { display:grid; grid-template-columns:74px 1fr 45px; gap:8px; align-items:center; width:100%; background:transparent; color:var(--ink); border:1px solid transparent; border-radius:6px; padding:5px; text-align:left; font:inherit; cursor:pointer; }
+  .bar-button[aria-pressed="true"] { border-color:#7891cc; background:#edf1fb; }
+  .bar-button:hover { background:#f0f3fa; }
+  .bar-button[hidden] { display:none; }
+  .bar-track { height:17px; background:#eef1f9; border-radius:3px; }
+  .bar-fill { display:block; height:100%; background:#566caa; border-radius:3px; }
+  .bar-value { text-align:right; font-variant-numeric:tabular-nums; font-weight:650; }
+  .bar-scale { display:flex; justify-content:space-between; margin:0 58px 0 88px; border-top:1px solid var(--line); padding-top:2px; }
+  .heatmap { width:100%; margin:5px 0 13px; border-collapse:separate; border-spacing:3px; table-layout:fixed; }
+  .heatmap th:first-child { width:59px; }
+  .heatmap th { text-align:center; font-size:13px; font-weight:600; }
+  .heatmap th[scope="row"] { text-align:left; padding-left:2px; }
+  .heatmap td { padding:0; }
+  .heat-cell { background:var(--cell); color:var(--cell-text); border:1px solid transparent; border-radius:4px; padding:5px 0; width:100%; min-height:32px; font:inherit; font-size:13px; font-weight:650; cursor:pointer; }
+  .heat-cell[aria-pressed="true"] { outline:2px solid var(--indigo); outline-offset:1px; }
+  .heat-cell:hover { box-shadow:inset 0 0 0 1px currentColor; }
+  .training-note { display:grid; gap:4px; margin-top:auto; border-left:3px solid #c4d0ed; padding:7px 9px; background:#f4f6fb; }
+  .training-detail { font-size:13px; color:var(--muted); }
+  .evaluation { display:grid; grid-template-columns:minmax(0,1.37fr) minmax(248px,.63fr); gap:16px; align-items:start; }
+  .scatter { min-width:0; }
+  .scatter svg { display:block; width:100%; height:auto; margin-top:7px; }
+  .scatter svg text { font:15px "Malgun Gothic",system-ui,sans-serif; fill:var(--muted); }
+  .scatter .grid { stroke:#e7eaf1; stroke-width:1; }
+  .scatter .axis { stroke:#9ca9bd; stroke-width:1; }
+  .reference { stroke:#5b6176; stroke-width:1.7; stroke-dasharray:6 4; }
+  .dot { opacity:.69; cursor:pointer; }
+  .dot.active,.dot:focus-visible { opacity:1; stroke:#20283a; stroke-width:2; }
+  .legend { display:flex; flex-wrap:wrap; gap:5px 12px; margin:4px 0 0; color:var(--muted); font-size:13px; }
+  .legend span { display:inline-flex; align-items:center; gap:5px; }
+  .legend i { width:9px; height:9px; border-radius:50%; background:var(--swatch); }
+  .legend i.reference-icon { width:16px; height:0; border-top:2px dashed #5b6176; border-radius:0; }
+  select { font:inherit; color:var(--ink); background:#fff; border:1px solid #a2aec0; border-radius:6px; padding:6px 8px; }
+  .series-panel { margin-bottom:12px; }
+  .series svg { display:block; width:100%; height:auto; }
+  .series svg text { fill:var(--muted); font-size:15px; }
+  .series .grid { stroke:#e7eaf1; }
+  .series .actual-line,.series .prediction-line { fill:none; stroke-width:2; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
+  .series .actual-line { stroke:var(--teal); }
+  .series .prediction-line { stroke:var(--indigo); stroke-dasharray:5 4; }
+  .series .guide { stroke:#6d7890; stroke-dasharray:3 3; pointer-events:none; }
+  .series .legend i.actual-icon { width:16px; height:0; border-top:2px solid var(--teal); border-radius:0; }
+  .series .legend i.predict-icon { width:16px; height:0; border-top:2px dashed var(--indigo); border-radius:0; }
+  .date-control { margin-top:8px; }
+  .date-control input { display:block; width:100%; accent-color:var(--indigo); }
+  .insight { border-left:3px solid #c4d0ed; background:#f4f6fb; padding:9px 11px; margin-top:8px; }
+  .detail { margin-top:13px; padding-top:12px; border-top:1px solid var(--line); }
+  .detail-date { color:var(--muted); margin:4px 0 7px; }
+  .detail dl { display:grid; gap:5px; }
+  .detail dl div { display:flex; justify-content:space-between; gap:6px; }
+  .detail dt { color:var(--muted); }
+  .detail dd { font-variant-numeric:tabular-nums; font-weight:650; }
+  .rank { margin-top:12px; }
+  .rank-head { display:flex; align-items:baseline; flex-wrap:wrap; gap:1px 12px; }
+  .table-wrap { overflow-x:auto; }
+  .rank table { width:100%; border-collapse:collapse; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .rank th,.rank td { padding:6px 9px; border-bottom:1px solid var(--line); text-align:right; }
+  .rank th:nth-child(2),.rank td:nth-child(2),.rank th:nth-child(3),.rank td:nth-child(3) { text-align:left; }
+  .rank thead { color:var(--muted); font-size:13px; }
+  .rank tr.current td { background:#edf1fb; }
+  .view-point { color:var(--indigo); text-decoration:underline; text-underline-offset:3px; padding:1px 0; background:transparent; border:0; font:inherit; cursor:pointer; }
+  .positive { color:#87450c; }
+  .negative { color:#3f4f99; }
+  .coef-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:10px 0 8px; }
+  .coefficient { padding:10px 12px; background:#f2f5fc; border-radius:7px; }
+  .coefficient strong { display:block; font-size:26px; color:#334986; font-variant-numeric:tabular-nums; }
+  :focus-visible { outline:2px solid #465da4; outline-offset:2px; }
+  @media (max-width:850px) { .training { grid-template-columns:1fr; } }
+  @media (max-width:650px) {
+    main,.masthead { padding-inline:14px; }
+    .panel { padding:13px 10px; }
+    .evaluation { grid-template-columns:1fr; gap:10px; }
+    .scatter svg text { font-size:24px; }
+    .series svg text { font-size:24px; }
+    .coef-grid { grid-template-columns:1fr; }
+  }
+  @media (max-width:400px) { .heatmap { border-spacing:2px; } .heatmap th:first-child { width:41px; } .heat-cell,.heatmap th { font-size:11px; } }
+</style>
+</head>
+<body>
+<header><div class="masthead">
+  <div class="masthead-content">
+    <div><h1>매장 주문량 예측 검토</h1>
+    <nav aria-label="대시보드 바로가기"><a href="#training">주문 현황</a><a href="#evaluation">예측 결과와 오차</a><a href="#coefficients">회귀계수 해석</a></nav></div>
+    <div class="global-filter"><label for="store-filter">매장 선택</label><select id="store-filter"><option value="">전체 매장</option></select></div>
+  </div>
+</div></header>
+<main>
+  <section id="training" aria-labelledby="training-title">
+    <div class="section-head"><h2 id="training-title">매장·요일별 주문 현황</h2><p class="period" id="training-period">학습 데이터 · 2024.11.01~2026.05.31 · 매장당 577일</p></div>
+    <div class="training">
+      <figure class="panel" aria-labelledby="bars-title">
+        <h3 id="bars-title">매장별 하루 평균</h3><p class="context">평균 주문건수 (건)</p>
+        <div id="bars" class="bar-chart"></div>
+        <figcaption class="training-note"><p id="bar-insight"></p><p id="bar-detail" class="training-detail" aria-live="polite"></p></figcaption>
+      </figure>
+      <figure class="panel" aria-labelledby="heat-title">
+        <h3 id="heat-title">매장·요일별 하루 평균</h3><p class="context">평균 주문건수 (건) · 진할수록 주문이 많음</p>
+        <table class="heatmap" aria-labelledby="heat-title"><thead id="heat-head"></thead><tbody id="heat-body"></tbody></table>
+        <figcaption class="training-note"><p id="heat-insight"></p><p id="heat-detail" class="training-detail" aria-live="polite"></p></figcaption>
+      </figure>
+    </div>
+  </section>
+  <section id="evaluation" aria-labelledby="evaluation-title">
+    <div class="section-head"><h2 id="evaluation-title">실제·예측 비교</h2><p class="period" id="evaluation-period">평가 데이터 · 2026.06.01~2026.08.31</p></div>
+    <div class="panel evaluation series-panel">
+      <figure class="series" aria-labelledby="series-title">
+        <h3 id="series-title">날짜별 실제·예측 주문건수</h3><p class="context" id="series-scope"></p>
+        <svg id="series" viewBox="0 0 650 275" role="img" aria-label="날짜별 실제·예측 주문건수 선그래프"></svg>
+        <figcaption class="legend"><span><i class="actual-icon"></i>실제 주문</span><span><i class="predict-icon"></i>예측 주문</span></figcaption>
+      </figure>
+      <aside>
+        <h3>평가 기간 요약</h3>
+        <p id="series-insight" class="insight"></p>
+        <div class="detail">
+          <dl>
+            <div><dt>하루 평균 실제 주문</dt><dd id="average-actual"></dd></div>
+            <div><dt>하루 평균 예측 주문</dt><dd id="average-forecast"></dd></div>
+            <div><dt>하루 평균 절대오차</dt><dd id="average-absolute-error"></dd></div>
+          </dl>
+          <div class="date-control"><label for="series-date">날짜 선택</label><input id="series-date" type="range" min="0" value="0"></div>
+          <p class="context" id="series-day" aria-live="polite"></p>
+        </div>
+      </aside>
+    </div>
+    <div class="panel evaluation">
+      <figure class="scatter" aria-labelledby="scatter-title">
+        <h3 id="scatter-title">실제 주문건수와 예측 주문건수</h3>
+        <svg id="scatter" viewBox="0 0 650 435" aria-labelledby="scatter-name scatter-desc"><title id="scatter-name">실제와 예측 주문건수 산점도</title><desc id="scatter-desc">가로축은 실제 주문건수, 세로축은 예측 주문건수입니다. 화살표 키로 점을 이동할 수 있습니다.</desc></svg>
+        <figcaption class="legend" id="legend"></figcaption>
+      </figure>
+      <aside>
+        <p id="scatter-insight" class="insight" aria-live="polite"></p>
+        <p class="context">점선 아래는 과소예측, 위는 과대예측입니다.</p>
+        <div class="detail" aria-labelledby="detail-title">
+          <h3 id="detail-title">선택한 기록</h3>
+          <p id="point-date" class="detail-date"></p>
+          <dl>
+            <div><dt>실제 주문</dt><dd id="point-actual"></dd></div>
+            <div><dt>예측 주문</dt><dd id="point-prediction"></dd></div>
+            <div><dt>예측오차</dt><dd id="point-error"></dd></div>
+          </dl>
+          <p class="context">점 또는 표의 날짜를 선택해 확인할 수 있습니다.</p>
+        </div>
+      </aside>
+    </div>
+    <div class="panel rank" aria-labelledby="rank-title">
+      <div class="rank-head"><h3 id="rank-title">절대오차 상위 10건</h3><p id="rank-scope" class="subtle"></p></div>
+      <p class="context">예측오차 = 실제 − 예측 · 순위는 반올림 전 절댓값 기준</p>
+      <div class="table-wrap" tabindex="0" aria-label="절대오차 상위 기록 표">
+        <table><thead><tr><th scope="col">순위</th><th scope="col">날짜</th><th scope="col">매장</th><th scope="col">요일</th><th scope="col">영업예정</th><th scope="col">예정할인</th><th scope="col">실제(건)</th><th scope="col">예측(건)</th><th scope="col">오차(건)</th></tr></thead><tbody id="rank-body"></tbody></table>
+      </div>
+    </div>
+  </section>
+  <section id="coefficients" aria-labelledby="coef-title">
+    <div class="section-head"><h2 id="coef-title">회귀계수의 주요 해석</h2><p class="period">학습 데이터 · 2024.11.01~2026.05.31</p></div>
+    <div class="panel">
+      <p>다른 입력 조건이 같을 때의 예측 주문건수 변화입니다.</p>
+      <div class="coef-grid">
+        <div class="coefficient">영업예정시간 1시간 증가<strong id="coef-hours"></strong></div>
+        <div class="coefficient">예정할인율 0% → 10%<strong id="coef-discount"></strong></div>
+        <div class="coefficient">토요일과 월요일의 차이<strong id="coef-saturday"></strong></div>
+      </div>
+      <p class="subtle">모든 매장 보기에서 동일한 학습 모델을 사용합니다. 범주형 변수의 기준은 강남역매장과 월요일입니다.</p>
+    </div>
+  </section>
+</main>
+<script type="application/json" id="dashboard-data">{"weekdays":["월","화","수","목","금","토","일"],"stores":[{"name":"판교역매장","average":431.4038128249567,"week":[{"average":396.2317073170732,"days":82},{"average":401.280487804878,"days":82},{"average":412.1463414634146,"days":82},{"average":416.609756097561,"days":82},{"average":443.6144578313253,"days":83},{"average":479.6144578313253,"days":83},{"average":469.13253012048193,"days":83}]},{"name":"강남역매장","average":370.1785095320624,"week":[{"average":350.6951219512195,"days":82},{"average":364.3658536585366,"days":82},{"average":360.5243902439024,"days":82},{"average":361.6951219512195,"days":82},{"average":378.12048192771084,"days":83},{"average":397.144578313253,"days":83},{"average":378.1807228915663,"days":83}]},{"name":"잠실역매장","average":309.50433275563256,"week":[{"average":300.4268292682927,"days":82},{"average":295.3414634146341,"days":82},{"average":301.2926829268293,"days":82},{"average":296.2926829268293,"days":82},{"average":327.5903614457831,"days":83},{"average":330.4578313253012,"days":83},{"average":314.5903614457831,"days":83}]},{"name":"양재역매장","average":252.40901213171577,"week":[{"average":230.2439024390244,"days":82},{"average":236.84146341463415,"days":82},{"average":236.1219512195122,"days":82},{"average":244.97560975609755,"days":82},{"average":255.65060240963857,"days":83},{"average":282.5903614457831,"days":83},{"average":279.69879518072287,"days":83}]},{"name":"수원역매장","average":222.2686308492201,"week":[{"average":197.9268292682927,"days":82},{"average":197.67073170731706,"days":82},{"average":206.82926829268294,"days":82},{"average":217.58536585365854,"days":82},{"average":223.0120481927711,"days":83},{"average":263.8192771084337,"days":83},{"average":248.20481927710844,"days":83}]}],"predictions":[{"date":"2026-06-01","store":"강남역매장","day":"월","hours":11,"discount":0,"actual":295,"prediction":318.95392663739074,"error":-23.95392663739074},{"date":"2026-06-01","store":"양재역매장","day":"월","hours":9,"discount":10,"actual":236,"prediction":224.65874183275457,"error":11.34125816724543},{"date":"2026-06-01","store":"판교역매장","day":"월","hours":12,"discount":0,"actual":425,"prediction":402.705903645112,"error":22.294096354888},{"date":"2026-06-01","store":"잠실역매장","day":"월","hours":11,"discount":0,"actual":333,"prediction":280.5310152589491,"error":52.4689847410509},{"date":"2026-06-01","store":"수원역매장","day":"월","hours":11,"discount":0,"actual":240,"prediction":214.482397276037,"error":25.517602723963},{"date":"2026-06-02","store":"강남역매장","day":"화","hours":13,"discount":0,"actual":314,"prediction":366.6388081237973,"error":-52.6388081237973},{"date":"2026-06-02","store":"양재역매장","day":"화","hours":11,"discount":0,"actual":324,"prediction":249.34976302488909,"error":74.65023697511091},{"date":"2026-06-02","store":"판교역매장","day":"화","hours":12,"discount":0,"actual":422,"prediction":407.1117352211845,"error":14.8882647788155},{"date":"2026-06-02","store":"잠실역매장","day":"화","hours":11,"discount":10,"actual":335,"prediction":307.9307071292935,"error":27.0692928707065},{"date":"2026-06-02","store":"수원역매장","day":"화","hours":10,"discount":5,"actual":236,"prediction":208.74563404407846,"error":27.25436595592154},{"date":"2026-06-03","store":"강남역매장","day":"수","hours":12,"discount":0,"actual":349,"prediction":347.0043315292993,"error":1.9956684707007},{"date":"2026-06-03","store":"양재역매장","day":"수","hours":10,"discount":15,"actual":352,"prediction":264.2060768717991,"error":87.7939231282009},{"date":"2026-06-03","store":"판교역매장","day":"수","hours":11,"discount":10,"actual":434,"prediction":410.4711189209585,"error":23.5288810790415},{"date":"2026-06-03","store":"잠실역매장","day":"수","hours":10,"discount":15,"actual":369,"prediction":299.7931606819316,"error":69.2068393180684},{"date":"2026-06-03","store":"수원역매장","day":"수","hours":10,"discount":0,"actual":277,"prediction":199.2537522576115,"error":77.7462477423885},{"date":"2026-06-04","store":"강남역매장","day":"목","hours":13,"discount":15,"actual":368,"prediction":407.9636651242802,"error":-39.9636651242802},{"date":"2026-06-04","store":"양재역매장","day":"목","hours":10,"discount":0,"actual":292,"prediction":234.544304628797,"error":57.455695371203},{"date":"2026-06-04","store":"판교역매장","day":"목","hours":11,"discount":15,"actual":446,"prediction":426.7970672665004,"error":19.2029327334996},{"date":"2026-06-04","store":"잠실역매장","day":"목","hours":11,"discount":5,"actual":409,"prediction":303.2678435412325,"error":105.7321564587675},{"date":"2026-06-04","store":"수원역매장","day":"목","hours":10,"discount":10,"actual":245,"prediction":227.07663075028938,"error":17.92336924971062},{"date":"2026-06-05","store":"강남역매장","day":"금","hours":12,"discount":5,"actual":352,"prediction":381.467710289922,"error":-29.467710289922},{"date":"2026-06-05","store":"양재역매장","day":"금","hours":9,"discount":0,"actual":262,"prediction":231.04221008871082,"error":30.95778991128918},{"date":"2026-06-05","store":"판교역매장","day":"금","hours":11,"discount":15,"actual":471,"prediction":444.9344976815812,"error":26.0655023184188},{"date":"2026-06-05","store":"잠실역매장","day":"금","hours":11,"discount":0,"actual":360,"prediction":309.90834380917727,"error":50.09165619082273},{"date":"2026-06-05","store":"수원역매장","day":"금","hours":10,"discount":5,"actual":282,"prediction":233.7171310182342,"error":48.2828689817658},{"date":"2026-06-06","store":"강남역매장","day":"토","hours":13,"discount":10,"actual":417,"prediction":438.4397484525694,"error":-21.4397484525694},{"date":"2026-06-06","store":"양재역매장","day":"토","hours":10,"discount":0,"actual":337,"prediction":276.5173181042222,"error":60.4826818957778},{"date":"2026-06-06","store":"판교역매장","day":"토","hours":12,"discount":0,"actual":523,"prediction":455.91881525568465,"error":67.08118474431535},{"date":"2026-06-06","store":"잠실역매장","day":"토","hours":11,"discount":0,"actual":455,"prediction":333.7439268695217,"error":121.2560731304783},{"date":"2026-06-06","store":"수원역매장","day":"토","hours":10,"discount":10,"actual":296,"prediction":269.04964422571464,"error":26.95035577428536},{"date":"2026-06-07","store":"강남역매장","day":"일","hours":13,"discount":0,"actual":342,"prediction":404.05734276280094,"error":-62.05734276280094},{"date":"2026-06-07","store":"양재역매장","day":"일","hours":9,"discount":0,"actual":369,"prediction":243.4892477535588,"error":125.5107522464412},{"date":"2026-06-07","store":"판교역매장","day":"일","hours":12,"discount":0,"actual":573,"prediction":444.53026986018824,"error":128.46973013981176},{"date":"2026-06-07","store":"잠실역매장","day":"일","hours":11,"discount":0,"actual":389,"prediction":322.35538147402525,"error":66.64461852597475},{"date":"2026-06-07","store":"수원역매장","day":"일","hours":10,"discount":0,"actual":229,"prediction":234.66723853594618,"error":-5.66723853594618},{"date":"2026-06-08","store":"강남역매장","day":"월","hours":12,"discount":0,"actual":289,"prediction":340.5934515925578,"error":-51.5934515925578},{"date":"2026-06-08","store":"양재역매장","day":"월","hours":10,"discount":0,"actual":346,"prediction":223.30440649364957,"error":122.69559350635043},{"date":"2026-06-08","store":"판교역매장","day":"월","hours":12,"discount":10,"actual":401,"prediction":425.699763939384,"error":-24.699763939384},{"date":"2026-06-08","store":"잠실역매장","day":"월","hours":11,"discount":10,"actual":432,"prediction":303.5248755532211,"error":128.4751244467789},{"date":"2026-06-08","store":"수원역매장","day":"월","hours":10,"discount":0,"actual":196,"prediction":192.84287232087,"error":3.15712767913},{"date":"2026-06-09","store":"강남역매장","day":"화","hours":12,"discount":0,"actual":314,"prediction":344.9992831686303,"error":-30.9992831686303},{"date":"2026-06-09","store":"양재역매장","day":"화","hours":9,"discount":0,"actual":238,"prediction":206.07071311455508,"error":31.92928688544492},{"date":"2026-06-09","store":"판교역매장","day":"화","hours":13,"discount":0,"actual":421,"prediction":428.7512601763515,"error":-7.7512601763515},{"date":"2026-06-09","store":"잠실역매장","day":"화","hours":11,"discount":5,"actual":452,"prediction":296.43377698215755,"error":155.56622301784245},{"date":"2026-06-09","store":"수원역매장","day":"화","hours":10,"discount":10,"actual":250,"prediction":220.24256419121446,"error":29.75743580878554},{"date":"2026-06-10","store":"강남역매장","day":"수","hours":13,"discount":0,"actual":345,"prediction":368.64385648446626,"error":-23.64385648446626},{"date":"2026-06-10","store":"양재역매장","day":"수","hours":10,"discount":10,"actual":281,"prediction":252.70914672466307,"error":28.29085327533693},{"date":"2026-06-10","store":"판교역매장","day":"수","hours":13,"discount":0,"actual":381,"prediction":430.75630853702046,"error":-49.75630853702046},{"date":"2026-06-10","store":"잠실역매장","day":"수","hours":11,"discount":10,"actual":425,"prediction":309.93575548996256,"error":115.06424451003744},{"date":"2026-06-10","store":"수원역매장","day":"수","hours":9,"discount":5,"actual":233,"prediction":189.1111574495805,"error":43.8888425504195},{"date":"2026-06-11","store":"강남역매장","day":"목","hours":12,"discount":15,"actual":323,"prediction":386.32414016911315,"error":-63.32414016911315},{"date":"2026-06-11","store":"양재역매장","day":"목","hours":10,"discount":0,"actual":270,"prediction":234.544304628797,"error":35.455695371203},{"date":"2026-06-11","store":"판교역매장","day":"목","hours":11,"discount":15,"actual":432,"prediction":426.7970672665004,"error":5.2029327334996},{"date":"2026-06-11","store":"잠실역매장","day":"목","hours":11,"discount":10,"actual":433,"prediction":314.76477368836845,"error":118.23522631163155},{"date":"2026-06-11","store":"수원역매장","day":"목","hours":10,"discount":5,"actual":347,"prediction":215.57970060315338,"error":131.42029939684662},{"date":"2026-06-12","store":"강남역매장","day":"금","hours":13,"discount":0,"actual":325,"prediction":391.61030509795296,"error":-66.61030509795296},{"date":"2026-06-12","store":"양재역매장","day":"금","hours":9,"discount":0,"actual":301,"prediction":231.04221008871082,"error":69.95778991128918},{"date":"2026-06-12","store":"판교역매장","day":"금","hours":11,"discount":5,"actual":416,"prediction":421.9406373873092,"error":-5.9406373873092},{"date":"2026-06-12","store":"잠실역매장","day":"금","hours":11,"discount":0,"actual":426,"prediction":309.90834380917727,"error":116.09165619082273},{"date":"2026-06-12","store":"수원역매장","day":"금","hours":10,"discount":0,"actual":335,"prediction":222.2202008710982,"error":112.7797991289018},{"date":"2026-06-13","store":"강남역매장","day":"토","hours":12,"discount":0,"actual":346,"prediction":393.80636320313045,"error":-47.80636320313045},{"date":"2026-06-13","store":"양재역매장","day":"토","hours":10,"discount":10,"actual":363,"prediction":299.5111783984942,"error":63.4888216015058},{"date":"2026-06-13","store":"판교역매장","day":"토","hours":12,"discount":0,"actual":498,"prediction":455.91881525568465,"error":42.08118474431535},{"date":"2026-06-13","store":"잠실역매장","day":"토","hours":12,"discount":10,"actual":501,"prediction":378.3773121189608,"error":122.6226878810392},{"date":"2026-06-13","store":"수원역매장","day":"토","hours":11,"discount":0,"actual":383,"prediction":267.6953088866097,"error":115.3046911133903},{"date":"2026-06-14","store":"강남역매장","day":"일","hours":12,"discount":0,"actual":306,"prediction":382.417817807634,"error":-76.417817807634},{"date":"2026-06-14","store":"양재역매장","day":"일","hours":11,"discount":0,"actual":336,"prediction":286.7682976638928,"error":49.2317023361072},{"date":"2026-06-14","store":"판교역매장","day":"일","hours":13,"discount":10,"actual":537,"prediction":489.1636551096272,"error":47.8363448903728},{"date":"2026-06-14","store":"잠실역매장","day":"일","hours":11,"discount":15,"actual":517,"prediction":356.8461719154333,"error":160.1538280845667},{"date":"2026-06-14","store":"수원역매장","day":"일","hours":10,"discount":0,"actual":302,"prediction":234.66723853594618,"error":67.33276146405382},{"date":"2026-06-15","store":"강남역매장","day":"월","hours":12,"discount":0,"actual":288,"prediction":340.5934515925578,"error":-52.5934515925578},{"date":"2026-06-15","store":"양재역매장","day":"월","hours":9,"discount":0,"actual":233,"prediction":201.66488153848258,"error":31.33511846151742},{"date":"2026-06-15","store":"판교역매장","day":"월","hours":12,"discount":0,"actual":428,"prediction":402.705903645112,"error":25.294096354888},{"date":"2026-06-15","store":"잠실역매장","day":"월","hours":11,"discount":0,"actual":437,"prediction":280.5310152589491,"error":156.4689847410509},{"date":"2026-06-15","store":"수원역매장","day":"월","hours":10,"discount":5,"actual":267,"prediction":204.33980246800598,"error":62.66019753199402},{"date":"2026-06-16","store":"강남역매장","day":"화","hours":12,"discount":0,"actual":318,"prediction":344.9992831686303,"error":-26.9992831686303},{"date":"2026-06-16","store":"양재역매장","day":"화","hours":10,"discount":0,"actual":312,"prediction":227.71023806972207,"error":84.28976193027793},{"date":"2026-06-16","store":"판교역매장","day":"화","hours":12,"discount":0,"actual":434,"prediction":407.1117352211845,"error":26.8882647788155},{"date":"2026-06-16","store":"잠실역매장","day":"화","hours":11,"discount":5,"actual":451,"prediction":296.43377698215755,"error":154.56622301784245},{"date":"2026-06-16","store":"수원역매장","day":"화","hours":11,"discount":15,"actual":285,"prediction":253.37901929351747,"error":31.62098070648253},{"date":"2026-06-17","store":"강남역매장","day":"수","hours":12,"discount":5,"actual":368,"prediction":358.5012616764353,"error":9.4987383235647},{"date":"2026-06-17","store":"양재역매장","day":"수","hours":10,"discount":5,"actual":288,"prediction":241.21221657752707,"error":46.78778342247293},{"date":"2026-06-17","store":"판교역매장","day":"수","hours":12,"discount":10,"actual":458,"prediction":432.1106438761255,"error":25.8893561238745},{"date":"2026-06-17","store":"잠실역매장","day":"수","hours":11,"discount":0,"actual":416,"prediction":286.94189519569056,"error":129.05810480430944},{"date":"2026-06-17","store":"수원역매장","day":"수","hours":10,"discount":5,"actual":248,"prediction":210.7506824047475,"error":37.2493175952525},{"date":"2026-06-18","store":"강남역매장","day":"목","hours":12,"discount":0,"actual":322,"prediction":351.8333497277051,"error":-29.8333497277051},{"date":"2026-06-18","store":"양재역매장","day":"목","hours":10,"discount":0,"actual":275,"prediction":234.544304628797,"error":40.455695371203},{"date":"2026-06-18","store":"판교역매장","day":"목","hours":12,"discount":10,"actual":483,"prediction":436.9396620745314,"error":46.0603379254686},{"date":"2026-06-18","store":"잠실역매장","day":"목","hours":12,"discount":0,"actual":456,"prediction":313.4104383492635,"error":142.5895616507365},{"date":"2026-06-18","store":"수원역매장","day":"목","hours":10,"discount":5,"actual":273,"prediction":215.57970060315338,"error":57.42029939684662},{"date":"2026-06-19","store":"강남역매장","day":"금","hours":12,"discount":15,"actual":433,"prediction":404.461570584194,"error":28.538429415806},{"date":"2026-06-19","store":"양재역매장","day":"금","hours":11,"discount":0,"actual":314,"prediction":274.3212599990448,"error":39.6787400009552},{"date":"2026-06-19","store":"판교역매장","day":"금","hours":12,"discount":15,"actual":450,"prediction":466.5740226367482,"error":-16.5740226367482},{"date":"2026-06-19","store":"잠실역매장","day":"금","hours":12,"discount":10,"actual":456,"prediction":354.5417290586163,"error":101.4582709413837},{"date":"2026-06-19","store":"수원역매장","day":"금","hours":10,"discount":0,"actual":287,"prediction":222.2202008710982,"error":64.7797991289018},{"date":"2026-06-20","store":"강남역매장","day":"토","hours":12,"discount":0,"actual":353,"prediction":393.80636320313045,"error":-40.80636320313045},{"date":"2026-06-20","store":"양재역매장","day":"토","hours":10,"discount":0,"actual":289,"prediction":276.5173181042222,"error":12.4826818957778},{"date":"2026-06-20","store":"판교역매장","day":"토","hours":13,"discount":15,"actual":612,"prediction":512.0491306522596,"error":99.9508693477404},{"date":"2026-06-20","store":"잠실역매장","day":"토","hours":11,"discount":0,"actual":453,"prediction":333.7439268695217,"error":119.2560731304783},{"date":"2026-06-20","store":"수원역매장","day":"토","hours":10,"discount":0,"actual":287,"prediction":246.05578393144262,"error":40.94421606855738},{"date":"2026-06-21","store":"강남역매장","day":"일","hours":12,"discount":5,"actual":369,"prediction":393.91474795477,"error":-24.91474795477},{"date":"2026-06-21","store":"양재역매장","day":"일","hours":10,"discount":10,"actual":322,"prediction":288.12263300299776,"error":33.87736699700224},{"date":"2026-06-21","store":"판교역매장","day":"일","hours":13,"discount":5,"actual":486,"prediction":477.66672496249123,"error":8.33327503750877},{"date":"2026-06-21","store":"잠실역매장","day":"일","hours":11,"discount":10,"actual":470,"prediction":345.34924176829725,"error":124.65075823170275},{"date":"2026-06-21","store":"수원역매장","day":"일","hours":10,"discount":0,"actual":296,"prediction":234.66723853594618,"error":61.33276146405382},{"date":"2026-06-22","store":"강남역매장","day":"월","hours":12,"discount":10,"actual":359,"prediction":363.5873118868298,"error":-4.5873118868298},{"date":"2026-06-22","store":"양재역매장","day":"월","hours":10,"discount":0,"actual":259,"prediction":223.30440649364957,"error":35.69559350635043},{"date":"2026-06-22","store":"판교역매장","day":"월","hours":11,"discount":15,"actual":389,"prediction":415.557169131353,"error":-26.557169131353},{"date":"2026-06-22","store":"잠실역매장","day":"월","hours":10,"discount":0,"actual":384,"prediction":258.89149030378206,"error":125.10850969621794},{"date":"2026-06-22","store":"수원역매장","day":"월","hours":10,"discount":0,"actual":219,"prediction":192.84287232087,"error":26.15712767913},{"date":"2026-06-23","store":"강남역매장","day":"화","hours":11,"discount":0,"actual":291,"prediction":323.35975821346324,"error":-32.35975821346324},{"date":"2026-06-23","store":"양재역매장","day":"화","hours":10,"discount":10,"actual":247,"prediction":250.70409836399406,"error":-3.70409836399406},{"date":"2026-06-23","store":"판교역매장","day":"화","hours":12,"discount":10,"actual":391,"prediction":430.1055955154565,"error":-39.1055955154565},{"date":"2026-06-23","store":"잠실역매장","day":"화","hours":11,"discount":0,"actual":377,"prediction":284.9368468350215,"error":92.0631531649785},{"date":"2026-06-23","store":"수원역매장","day":"화","hours":11,"discount":0,"actual":265,"prediction":218.88822885210948,"error":46.11177114789052},{"date":"2026-06-24","store":"강남역매장","day":"수","hours":12,"discount":15,"actual":413,"prediction":381.4951219707073,"error":31.5048780292927},{"date":"2026-06-24","store":"양재역매장","day":"수","hours":10,"discount":0,"actual":265,"prediction":229.71528643039107,"error":35.28471356960893},{"date":"2026-06-24","store":"판교역매장","day":"수","hours":11,"discount":10,"actual":414,"prediction":410.4711189209585,"error":3.5288810790415},{"date":"2026-06-24","store":"잠실역매장","day":"수","hours":11,"discount":0,"actual":361,"prediction":286.94189519569056,"error":74.05810480430944},{"date":"2026-06-24","store":"수원역매장","day":"수","hours":10,"discount":0,"actual":243,"prediction":199.2537522576115,"error":43.7462477423885},{"date":"2026-06-25","store":"강남역매장","day":"목","hours":12,"discount":0,"actual":315,"prediction":351.8333497277051,"error":-36.8333497277051},{"date":"2026-06-25","store":"양재역매장","day":"목","hours":11,"discount":5,"actual":305,"prediction":267.6807597311,"error":37.3192402689},{"date":"2026-06-25","store":"판교역매장","day":"목","hours":11,"discount":0,"actual":392,"prediction":392.30627682509237,"error":-0.30627682509237},{"date":"2026-06-25","store":"잠실역매장","day":"목","hours":10,"discount":0,"actual":387,"prediction":270.13138843892943,"error":116.86861156107057},{"date":"2026-06-25","store":"수원역매장","day":"목","hours":10,"discount":5,"actual":243,"prediction":215.57970060315338,"error":27.42029939684662},{"date":"2026-06-26","store":"강남역매장","day":"금","hours":11,"discount":0,"actual":355,"prediction":348.331255187619,"error":6.668744812381},{"date":"2026-06-26","store":"양재역매장","day":"금","hours":10,"discount":0,"actual":252,"prediction":252.68173504387778,"error":-0.68173504387778},{"date":"2026-06-26","store":"판교역매장","day":"금","hours":12,"discount":0,"actual":418,"prediction":432.0832321953402,"error":-14.0832321953402},{"date":"2026-06-26","store":"잠실역매장","day":"금","hours":12,"discount":0,"actual":471,"prediction":331.5478687643443,"error":139.4521312356557},{"date":"2026-06-26","store":"수원역매장","day":"금","hours":11,"discount":5,"actual":301,"prediction":255.35665597340122,"error":45.64334402659878},{"date":"2026-06-27","store":"강남역매장","day":"토","hours":11,"discount":0,"actual":341,"prediction":372.1668382479635,"error":-31.1668382479635},{"date":"2026-06-27","store":"양재역매장","day":"토","hours":10,"discount":15,"actual":395,"prediction":311.00810854563025,"error":83.99189145436975},{"date":"2026-06-27","store":"판교역매장","day":"토","hours":11,"discount":0,"actual":453,"prediction":434.2792903005177,"error":18.7207096994823},{"date":"2026-06-27","store":"잠실역매장","day":"토","hours":10,"discount":0,"actual":408,"prediction":312.10440191435475,"error":95.89559808564525},{"date":"2026-06-27","store":"수원역매장","day":"토","hours":11,"discount":0,"actual":326,"prediction":267.6953088866097,"error":58.3046911133903},{"date":"2026-06-28","store":"강남역매장","day":"일","hours":12,"discount":0,"actual":399,"prediction":382.417817807634,"error":16.582182192366},{"date":"2026-06-28","store":"양재역매장","day":"일","hours":10,"discount":0,"actual":325,"prediction":265.12877270872576,"error":59.87122729127424},{"date":"2026-06-28","store":"판교역매장","day":"일","hours":12,"discount":0,"actual":441,"prediction":444.53026986018824,"error":-3.53026986018824},{"date":"2026-06-28","store":"잠실역매장","day":"일","hours":11,"discount":15,"actual":451,"prediction":356.8461719154333,"error":94.1538280845667},{"date":"2026-06-28","store":"수원역매장","day":"일","hours":9,"discount":0,"actual":245,"prediction":213.0277135807792,"error":31.9722864192208},{"date":"2026-06-29","store":"강남역매장","day":"월","hours":13,"discount":0,"actual":320,"prediction":362.2329765477248,"error":-42.2329765477248},{"date":"2026-06-29","store":"양재역매장","day":"월","hours":10,"discount":0,"actual":211,"prediction":223.30440649364957,"error":-12.30440649364957},{"date":"2026-06-29","store":"판교역매장","day":"월","hours":11,"discount":0,"actual":394,"prediction":381.066378689945,"error":12.933621310055},{"date":"2026-06-29","store":"잠실역매장","day":"월","hours":12,"discount":0,"actual":397,"prediction":302.17054021411604,"error":94.82945978588396},{"date":"2026-06-29","store":"수원역매장","day":"월","hours":11,"discount":0,"actual":230,"prediction":214.482397276037,"error":15.517602723963},{"date":"2026-06-30","store":"강남역매장","day":"화","hours":12,"discount":0,"actual":335,"prediction":344.9992831686303,"error":-9.9992831686303},{"date":"2026-06-30","store":"양재역매장","day":"화","hours":9,"discount":0,"actual":190,"prediction":206.07071311455508,"error":-16.07071311455508},{"date":"2026-06-30","store":"판교역매장","day":"화","hours":11,"discount":5,"actual":417,"prediction":396.96914041315347,"error":20.03085958684653},{"date":"2026-06-30","store":"잠실역매장","day":"화","hours":11,"discount":0,"actual":395,"prediction":284.9368468350215,"error":110.0631531649785},{"date":"2026-06-30","store":"수원역매장","day":"화","hours":10,"discount":0,"actual":244,"prediction":197.24870389694246,"error":46.75129610305754},{"date":"2026-07-01","store":"강남역매장","day":"수","hours":12,"discount":10,"actual":330,"prediction":369.9981918235713,"error":-39.9981918235713},{"date":"2026-07-01","store":"양재역매장","day":"수","hours":11,"discount":0,"actual":315,"prediction":251.3548113855581,"error":63.6451886144419},{"date":"2026-07-01","store":"판교역매장","day":"수","hours":12,"discount":15,"actual":458,"prediction":443.6075740232615,"error":14.3924259767385},{"date":"2026-07-01","store":"잠실역매장","day":"수","hours":11,"discount":0,"actual":403,"prediction":286.94189519569056,"error":116.05810480430944},{"date":"2026-07-01","store":"수원역매장","day":"수","hours":10,"discount":5,"actual":270,"prediction":210.7506824047475,"error":59.2493175952525},{"date":"2026-07-02","store":"강남역매장","day":"목","hours":12,"discount":0,"actual":331,"prediction":351.8333497277051,"error":-20.8333497277051},{"date":"2026-07-02","store":"양재역매장","day":"목","hours":10,"discount":5,"actual":286,"prediction":246.041234775933,"error":39.958765224067},{"date":"2026-07-02","store":"판교역매장","day":"목","hours":12,"discount":10,"actual":405,"prediction":436.9396620745314,"error":-31.9396620745314},{"date":"2026-07-02","store":"잠실역매장","day":"목","hours":11,"discount":0,"actual":513,"prediction":291.77091339409645,"error":221.22908660590355},{"date":"2026-07-02","store":"수원역매장","day":"목","hours":10,"discount":5,"actual":272,"prediction":215.57970060315338,"error":56.42029939684662},{"date":"2026-07-03","store":"강남역매장","day":"금","hours":13,"discount":10,"actual":404,"prediction":414.60416539222496,"error":-10.60416539222496},{"date":"2026-07-03","store":"양재역매장","day":"금","hours":9,"discount":5,"actual":300,"prediction":242.53914023584682,"error":57.46085976415318},{"date":"2026-07-03","store":"판교역매장","day":"금","hours":12,"discount":0,"actual":423,"prediction":432.0832321953402,"error":-9.0832321953402},{"date":"2026-07-03","store":"잠실역매장","day":"금","hours":12,"discount":0,"actual":575,"prediction":331.5478687643443,"error":243.4521312356557},{"date":"2026-07-03","store":"수원역매장","day":"금","hours":10,"discount":10,"actual":333,"prediction":245.2140611653702,"error":87.7859388346298},{"date":"2026-07-04","store":"강남역매장","day":"토","hours":12,"discount":10,"actual":375,"prediction":416.80022349740244,"error":-41.80022349740244},{"date":"2026-07-04","store":"양재역매장","day":"토","hours":10,"discount":10,"actual":379,"prediction":299.5111783984942,"error":79.4888216015058},{"date":"2026-07-04","store":"판교역매장","day":"토","hours":12,"discount":0,"actual":471,"prediction":455.91881525568465,"error":15.08118474431535},{"date":"2026-07-04","store":"잠실역매장","day":"토","hours":12,"discount":10,"actual":457,"prediction":378.3773121189608,"error":78.6226878810392},{"date":"2026-07-04","store":"수원역매장","day":"토","hours":9,"discount":0,"actual":301,"prediction":224.41625897627566,"error":76.58374102372434},{"date":"2026-07-05","store":"강남역매장","day":"일","hours":12,"discount":0,"actual":338,"prediction":382.417817807634,"error":-44.417817807634},{"date":"2026-07-05","store":"양재역매장","day":"일","hours":10,"discount":10,"actual":344,"prediction":288.12263300299776,"error":55.87736699700224},{"date":"2026-07-05","store":"판교역매장","day":"일","hours":12,"discount":0,"actual":516,"prediction":444.53026986018824,"error":71.46973013981176},{"date":"2026-07-05","store":"잠실역매장","day":"일","hours":10,"discount":5,"actual":377,"prediction":312.21278666599426,"error":64.78721333400574},{"date":"2026-07-05","store":"수원역매장","day":"일","hours":10,"discount":5,"actual":337,"prediction":246.16416868308218,"error":90.83583131691782},{"date":"2026-07-06","store":"강남역매장","day":"월","hours":12,"discount":0,"actual":393,"prediction":340.5934515925578,"error":52.4065484074422},{"date":"2026-07-06","store":"양재역매장","day":"월","hours":10,"discount":0,"actual":280,"prediction":223.30440649364957,"error":56.69559350635043},{"date":"2026-07-06","store":"판교역매장","day":"월","hours":12,"discount":10,"actual":469,"prediction":425.699763939384,"error":43.300236060616},{"date":"2026-07-06","store":"잠실역매장","day":"월","hours":12,"discount":10,"actual":404,"prediction":325.16440050838804,"error":78.83559949161196},{"date":"2026-07-06","store":"수원역매장","day":"월","hours":10,"discount":0,"actual":275,"prediction":192.84287232087,"error":82.15712767913},{"date":"2026-07-07","store":"강남역매장","day":"화","hours":12,"discount":5,"actual":338,"prediction":356.49621331576634,"error":-18.49621331576634},{"date":"2026-07-07","store":"양재역매장","day":"화","hours":10,"discount":0,"actual":337,"prediction":227.71023806972207,"error":109.28976193027793},{"date":"2026-07-07","store":"판교역매장","day":"화","hours":13,"discount":0,"actual":441,"prediction":428.7512601763515,"error":12.2487398236485},{"date":"2026-07-07","store":"잠실역매장","day":"화","hours":11,"discount":10,"actual":360,"prediction":307.9307071292935,"error":52.0692928707065},{"date":"2026-07-07","store":"수원역매장","day":"화","hours":10,"discount":0,"actual":218,"prediction":197.24870389694246,"error":20.75129610305754},{"date":"2026-07-08","store":"강남역매장","day":"수","hours":12,"discount":0,"actual":318,"prediction":347.0043315292993,"error":-29.0043315292993},{"date":"2026-07-08","store":"양재역매장","day":"수","hours":10,"discount":15,"actual":363,"prediction":264.2060768717991,"error":98.7939231282009},{"date":"2026-07-08","store":"판교역매장","day":"수","hours":11,"discount":15,"actual":401,"prediction":421.9680490680945,"error":-20.9680490680945},{"date":"2026-07-08","store":"잠실역매장","day":"수","hours":11,"discount":0,"actual":333,"prediction":286.94189519569056,"error":46.05810480430944},{"date":"2026-07-08","store":"수원역매장","day":"수","hours":10,"discount":5,"actual":253,"prediction":210.7506824047475,"error":42.2493175952525},{"date":"2026-07-09","store":"강남역매장","day":"목","hours":13,"discount":10,"actual":351,"prediction":396.4667349771442,"error":-45.4667349771442},{"date":"2026-07-09","store":"양재역매장","day":"목","hours":9,"discount":0,"actual":254,"prediction":212.90477967362997,"error":41.09522032637003},{"date":"2026-07-09","store":"판교역매장","day":"목","hours":12,"discount":15,"actual":483,"prediction":448.4365922216674,"error":34.5634077783326},{"date":"2026-07-09","store":"잠실역매장","day":"목","hours":12,"discount":0,"actual":392,"prediction":313.4104383492635,"error":78.5895616507365},{"date":"2026-07-09","store":"수원역매장","day":"목","hours":11,"discount":0,"actual":255,"prediction":225.7222954111844,"error":29.2777045888156},{"date":"2026-07-10","store":"강남역매장","day":"금","hours":12,"discount":10,"actual":339,"prediction":392.964640437058,"error":-53.964640437058},{"date":"2026-07-10","store":"양재역매장","day":"금","hours":10,"discount":0,"actual":327,"prediction":252.68173504387778,"error":74.31826495612222},{"date":"2026-07-10","store":"판교역매장","day":"금","hours":12,"discount":0,"actual":469,"prediction":432.0832321953402,"error":36.9167678046598},{"date":"2026-07-10","store":"잠실역매장","day":"금","hours":11,"discount":15,"actual":423,"prediction":344.3991342505853,"error":78.6008657494147},{"date":"2026-07-10","store":"수원역매장","day":"금","hours":9,"discount":0,"actual":226,"prediction":200.5806759159312,"error":25.4193240840688},{"date":"2026-07-11","store":"강남역매장","day":"토","hours":12,"discount":0,"actual":325,"prediction":393.80636320313045,"error":-68.80636320313045},{"date":"2026-07-11","store":"양재역매장","day":"토","hours":10,"discount":10,"actual":376,"prediction":299.5111783984942,"error":76.4888216015058},{"date":"2026-07-11","store":"판교역매장","day":"토","hours":12,"discount":0,"actual":457,"prediction":455.91881525568465,"error":1.08118474431535},{"date":"2026-07-11","store":"잠실역매장","day":"토","hours":12,"discount":0,"actual":402,"prediction":355.3834518246888,"error":46.6165481753112},{"date":"2026-07-11","store":"수원역매장","day":"토","hours":10,"discount":0,"actual":285,"prediction":246.05578393144262,"error":38.94421606855738},{"date":"2026-07-12","store":"강남역매장","day":"일","hours":12,"discount":0,"actual":340,"prediction":382.417817807634,"error":-42.417817807634},{"date":"2026-07-12","store":"양재역매장","day":"일","hours":10,"discount":0,"actual":360,"prediction":265.12877270872576,"error":94.87122729127424},{"date":"2026-07-12","store":"판교역매장","day":"일","hours":12,"discount":0,"actual":524,"prediction":444.53026986018824,"error":79.46973013981176},{"date":"2026-07-12","store":"잠실역매장","day":"일","hours":11,"discount":5,"actual":417,"prediction":333.8523116211613,"error":83.1476883788387},{"date":"2026-07-12","store":"수원역매장","day":"일","hours":10,"discount":10,"actual":294,"prediction":257.6610988302182,"error":36.3389011697818},{"date":"2026-07-13","store":"강남역매장","day":"월","hours":12,"discount":0,"actual":299,"prediction":340.5934515925578,"error":-41.5934515925578},{"date":"2026-07-13","store":"양재역매장","day":"월","hours":11,"discount":0,"actual":309,"prediction":244.94393144881658,"error":64.05606855118342},{"date":"2026-07-13","store":"판교역매장","day":"월","hours":11,"discount":15,"actual":432,"prediction":415.557169131353,"error":16.442830868647},{"date":"2026-07-13","store":"잠실역매장","day":"월","hours":10,"discount":0,"actual":326,"prediction":258.89149030378206,"error":67.10850969621794},{"date":"2026-07-13","store":"수원역매장","day":"월","hours":11,"discount":0,"actual":225,"prediction":214.482397276037,"error":10.517602723963},{"date":"2026-07-14","store":"강남역매장","day":"화","hours":12,"discount":0,"actual":340,"prediction":344.9992831686303,"error":-4.9992831686303},{"date":"2026-07-14","store":"양재역매장","day":"화","hours":10,"discount":0,"actual":273,"prediction":227.71023806972207,"error":45.28976193027793},{"date":"2026-07-14","store":"판교역매장","day":"화","hours":12,"discount":0,"actual":451,"prediction":407.1117352211845,"error":43.8882647788155},{"date":"2026-07-14","store":"잠실역매장","day":"화","hours":12,"discount":0,"actual":404,"prediction":306.57637179018855,"error":97.42362820981145},{"date":"2026-07-14","store":"수원역매장","day":"화","hours":10,"discount":0,"actual":213,"prediction":197.24870389694246,"error":15.75129610305754},{"date":"2026-07-15","store":"강남역매장","day":"수","hours":13,"discount":5,"actual":353,"prediction":380.1407866316023,"error":-27.1407866316023},{"date":"2026-07-15","store":"양재역매장","day":"수","hours":10,"discount":5,"actual":292,"prediction":241.21221657752707,"error":50.78778342247293},{"date":"2026-07-15","store":"판교역매장","day":"수","hours":13,"discount":10,"actual":527,"prediction":453.75016883129246,"error":73.24983116870754},{"date":"2026-07-15","store":"잠실역매장","day":"수","hours":11,"discount":0,"actual":431,"prediction":286.94189519569056,"error":144.05810480430944},{"date":"2026-07-15","store":"수원역매장","day":"수","hours":11,"discount":5,"actual":249,"prediction":232.3902073599145,"error":16.6097926400855},{"date":"2026-07-16","store":"강남역매장","day":"목","hours":13,"discount":0,"actual":344,"prediction":373.4728746828722,"error":-29.4728746828722},{"date":"2026-07-16","store":"양재역매장","day":"목","hours":10,"discount":10,"actual":334,"prediction":257.538164923069,"error":76.461835076931},{"date":"2026-07-16","store":"판교역매장","day":"목","hours":12,"discount":0,"actual":479,"prediction":413.9458017802594,"error":65.0541982197406},{"date":"2026-07-16","store":"잠실역매장","day":"목","hours":10,"discount":0,"actual":347,"prediction":270.13138843892943,"error":76.86861156107057},{"date":"2026-07-16","store":"수원역매장","day":"목","hours":9,"discount":0,"actual":214,"prediction":182.4432455008504,"error":31.5567544991496},{"date":"2026-07-17","store":"강남역매장","day":"금","hours":13,"discount":0,"actual":379,"prediction":391.61030509795296,"error":-12.61030509795296},{"date":"2026-07-17","store":"양재역매장","day":"금","hours":9,"discount":0,"actual":293,"prediction":231.04221008871082,"error":61.95778991128918},{"date":"2026-07-17","store":"판교역매장","day":"금","hours":12,"discount":15,"actual":552,"prediction":466.5740226367482,"error":85.4259773632518},{"date":"2026-07-17","store":"잠실역매장","day":"금","hours":12,"discount":0,"actual":438,"prediction":331.5478687643443,"error":106.4521312356557},{"date":"2026-07-17","store":"수원역매장","day":"금","hours":9,"discount":5,"actual":257,"prediction":212.0776060630672,"error":44.9223939369328},{"date":"2026-07-18","store":"강남역매장","day":"토","hours":12,"discount":10,"actual":388,"prediction":416.80022349740244,"error":-28.80022349740244},{"date":"2026-07-18","store":"양재역매장","day":"토","hours":9,"discount":0,"actual":338,"prediction":254.87779314905524,"error":83.12220685094476},{"date":"2026-07-18","store":"판교역매장","day":"토","hours":11,"discount":10,"actual":463,"prediction":457.2731505947897,"error":5.7268494052103},{"date":"2026-07-18","store":"잠실역매장","day":"토","hours":11,"discount":5,"actual":407,"prediction":345.24085701665774,"error":61.75914298334226},{"date":"2026-07-18","store":"수원역매장","day":"토","hours":9,"discount":0,"actual":241,"prediction":224.41625897627566,"error":16.58374102372434},{"date":"2026-07-19","store":"강남역매장","day":"일","hours":12,"discount":5,"actual":348,"prediction":393.91474795477,"error":-45.91474795477},{"date":"2026-07-19","store":"양재역매장","day":"일","hours":11,"discount":5,"actual":462,"prediction":298.2652278110288,"error":163.7347721889712},{"date":"2026-07-19","store":"판교역매장","day":"일","hours":11,"discount":5,"actual":605,"prediction":434.3876750521572,"error":170.6123249478428},{"date":"2026-07-19","store":"잠실역매장","day":"일","hours":11,"discount":0,"actual":390,"prediction":322.35538147402525,"error":67.64461852597475},{"date":"2026-07-19","store":"수원역매장","day":"일","hours":10,"discount":5,"actual":253,"prediction":246.16416868308218,"error":6.83583131691782},{"date":"2026-07-20","store":"강남역매장","day":"월","hours":12,"discount":0,"actual":281,"prediction":340.5934515925578,"error":-59.5934515925578},{"date":"2026-07-20","store":"양재역매장","day":"월","hours":9,"discount":10,"actual":278,"prediction":224.65874183275457,"error":53.34125816724543},{"date":"2026-07-20","store":"판교역매장","day":"월","hours":12,"discount":0,"actual":436,"prediction":402.705903645112,"error":33.294096354888},{"date":"2026-07-20","store":"잠실역매장","day":"월","hours":11,"discount":5,"actual":408,"prediction":292.0279454060851,"error":115.9720545939149},{"date":"2026-07-20","store":"수원역매장","day":"월","hours":10,"discount":0,"actual":221,"prediction":192.84287232087,"error":28.15712767913},{"date":"2026-07-21","store":"강남역매장","day":"화","hours":12,"discount":15,"actual":363,"prediction":379.49007361003834,"error":-16.49007361003834},{"date":"2026-07-21","store":"양재역매장","day":"화","hours":10,"discount":15,"actual":331,"prediction":262.20102851113006,"error":68.79897148886994},{"date":"2026-07-21","store":"판교역매장","day":"화","hours":12,"discount":0,"actual":454,"prediction":407.1117352211845,"error":46.8882647788155},{"date":"2026-07-21","store":"잠실역매장","day":"화","hours":11,"discount":15,"actual":411,"prediction":319.42763727642955,"error":91.57236272357045},{"date":"2026-07-21","store":"수원역매장","day":"화","hours":10,"discount":0,"actual":236,"prediction":197.24870389694246,"error":38.75129610305754},{"date":"2026-07-22","store":"강남역매장","day":"수","hours":11,"discount":0,"actual":289,"prediction":325.3648065741323,"error":-36.3648065741323},{"date":"2026-07-22","store":"양재역매장","day":"수","hours":11,"discount":0,"actual":333,"prediction":251.3548113855581,"error":81.6451886144419},{"date":"2026-07-22","store":"판교역매장","day":"수","hours":12,"discount":10,"actual":425,"prediction":432.1106438761255,"error":-7.1106438761255},{"date":"2026-07-22","store":"잠실역매장","day":"수","hours":11,"discount":0,"actual":415,"prediction":286.94189519569056,"error":128.05810480430944},{"date":"2026-07-22","store":"수원역매장","day":"수","hours":10,"discount":5,"actual":238,"prediction":210.7506824047475,"error":27.2493175952525},{"date":"2026-07-23","store":"강남역매장","day":"목","hours":12,"discount":0,"actual":346,"prediction":351.8333497277051,"error":-5.8333497277051},{"date":"2026-07-23","store":"양재역매장","day":"목","hours":9,"discount":0,"actual":244,"prediction":212.90477967362997,"error":31.09522032637003},{"date":"2026-07-23","store":"판교역매장","day":"목","hours":12,"discount":0,"actual":381,"prediction":413.9458017802594,"error":-32.9458017802594},{"date":"2026-07-23","store":"잠실역매장","day":"목","hours":11,"discount":0,"actual":348,"prediction":291.77091339409645,"error":56.22908660590355},{"date":"2026-07-23","store":"수원역매장","day":"목","hours":10,"discount":0,"actual":243,"prediction":204.08277045601739,"error":38.91722954398261},{"date":"2026-07-24","store":"강남역매장","day":"금","hours":12,"discount":0,"actual":491,"prediction":369.970780142786,"error":121.029219857214},{"date":"2026-07-24","store":"양재역매장","day":"금","hours":9,"discount":10,"actual":239,"prediction":254.0360703829828,"error":-15.0360703829828},{"date":"2026-07-24","store":"판교역매장","day":"금","hours":13,"discount":0,"actual":477,"prediction":453.72275715050716,"error":23.27724284949284},{"date":"2026-07-24","store":"잠실역매장","day":"금","hours":11,"discount":0,"actual":373,"prediction":309.90834380917727,"error":63.09165619082273},{"date":"2026-07-24","store":"수원역매장","day":"금","hours":10,"discount":5,"actual":295,"prediction":233.7171310182342,"error":61.2828689817658},{"date":"2026-07-25","store":"강남역매장","day":"토","hours":12,"discount":0,"actual":476,"prediction":393.80636320313045,"error":82.19363679686955},{"date":"2026-07-25","store":"양재역매장","day":"토","hours":11,"discount":10,"actual":362,"prediction":321.1507033536613,"error":40.8492966463387},{"date":"2026-07-25","store":"판교역매장","day":"토","hours":12,"discount":0,"actual":529,"prediction":455.91881525568465,"error":73.08118474431535},{"date":"2026-07-25","store":"잠실역매장","day":"토","hours":12,"discount":0,"actual":421,"prediction":355.3834518246888,"error":65.6165481753112},{"date":"2026-07-25","store":"수원역매장","day":"토","hours":10,"discount":0,"actual":345,"prediction":246.05578393144262,"error":98.94421606855738},{"date":"2026-07-26","store":"강남역매장","day":"일","hours":12,"discount":0,"actual":343,"prediction":382.417817807634,"error":-39.417817807634},{"date":"2026-07-26","store":"양재역매장","day":"일","hours":10,"discount":0,"actual":327,"prediction":265.12877270872576,"error":61.87122729127424},{"date":"2026-07-26","store":"판교역매장","day":"일","hours":13,"discount":10,"actual":613,"prediction":489.1636551096272,"error":123.8363448903728},{"date":"2026-07-26","store":"잠실역매장","day":"일","hours":11,"discount":0,"actual":394,"prediction":322.35538147402525,"error":71.64461852597475},{"date":"2026-07-26","store":"수원역매장","day":"일","hours":11,"discount":5,"actual":309,"prediction":267.80369363824923,"error":41.19630636175077},{"date":"2026-07-27","store":"강남역매장","day":"월","hours":12,"discount":0,"actual":330,"prediction":340.5934515925578,"error":-10.5934515925578},{"date":"2026-07-27","store":"양재역매장","day":"월","hours":10,"discount":10,"actual":265,"prediction":246.29826678792156,"error":18.70173321207844},{"date":"2026-07-27","store":"판교역매장","day":"월","hours":11,"discount":0,"actual":491,"prediction":381.066378689945,"error":109.933621310055},{"date":"2026-07-27","store":"잠실역매장","day":"월","hours":11,"discount":5,"actual":389,"prediction":292.0279454060851,"error":96.9720545939149},{"date":"2026-07-27","store":"수원역매장","day":"월","hours":10,"discount":10,"actual":283,"prediction":215.83673261514198,"error":67.16326738485802},{"date":"2026-07-28","store":"강남역매장","day":"화","hours":12,"discount":0,"actual":363,"prediction":344.9992831686303,"error":18.0007168313697},{"date":"2026-07-28","store":"양재역매장","day":"화","hours":10,"discount":0,"actual":270,"prediction":227.71023806972207,"error":42.28976193027793},{"date":"2026-07-28","store":"판교역매장","day":"화","hours":13,"discount":0,"actual":448,"prediction":428.7512601763515,"error":19.2487398236485},{"date":"2026-07-28","store":"잠실역매장","day":"화","hours":11,"discount":0,"actual":476,"prediction":284.9368468350215,"error":191.0631531649785},{"date":"2026-07-28","store":"수원역매장","day":"화","hours":9,"discount":5,"actual":264,"prediction":187.10610908891147,"error":76.89389091108853},{"date":"2026-07-29","store":"강남역매장","day":"수","hours":11,"discount":0,"actual":344,"prediction":325.3648065741323,"error":18.6351934258677},{"date":"2026-07-29","store":"양재역매장","day":"수","hours":10,"discount":0,"actual":253,"prediction":229.71528643039107,"error":23.28471356960893},{"date":"2026-07-29","store":"판교역매장","day":"수","hours":11,"discount":10,"actual":483,"prediction":410.4711189209585,"error":72.5288810790415},{"date":"2026-07-29","store":"잠실역매장","day":"수","hours":11,"discount":0,"actual":535,"prediction":286.94189519569056,"error":248.05810480430944},{"date":"2026-07-29","store":"수원역매장","day":"수","hours":10,"discount":0,"actual":242,"prediction":199.2537522576115,"error":42.7462477423885},{"date":"2026-07-30","store":"강남역매장","day":"목","hours":11,"discount":0,"actual":346,"prediction":330.19382477253816,"error":15.80617522746184},{"date":"2026-07-30","store":"양재역매장","day":"목","hours":10,"discount":10,"actual":325,"prediction":257.538164923069,"error":67.461835076931},{"date":"2026-07-30","store":"판교역매장","day":"목","hours":13,"discount":0,"actual":465,"prediction":435.5853267354264,"error":29.4146732645736},{"date":"2026-07-30","store":"잠실역매장","day":"목","hours":11,"discount":0,"actual":500,"prediction":291.77091339409645,"error":208.22908660590355},{"date":"2026-07-30","store":"수원역매장","day":"목","hours":10,"discount":0,"actual":279,"prediction":204.08277045601739,"error":74.91722954398261},{"date":"2026-07-31","store":"강남역매장","day":"금","hours":12,"discount":10,"actual":410,"prediction":392.964640437058,"error":17.035359562942},{"date":"2026-07-31","store":"양재역매장","day":"금","hours":11,"discount":0,"actual":318,"prediction":274.3212599990448,"error":43.6787400009552},{"date":"2026-07-31","store":"판교역매장","day":"금","hours":12,"discount":0,"actual":445,"prediction":432.0832321953402,"error":12.9167678046598},{"date":"2026-07-31","store":"잠실역매장","day":"금","hours":11,"discount":0,"actual":370,"prediction":309.90834380917727,"error":60.09165619082273},{"date":"2026-07-31","store":"수원역매장","day":"금","hours":9,"discount":10,"actual":309,"prediction":223.5745362102032,"error":85.4254637897968},{"date":"2026-08-01","store":"강남역매장","day":"토","hours":12,"discount":0,"actual":421,"prediction":393.80636320313045,"error":27.19363679686955},{"date":"2026-08-01","store":"양재역매장","day":"토","hours":10,"discount":0,"actual":350,"prediction":276.5173181042222,"error":73.4826818957778},{"date":"2026-08-01","store":"판교역매장","day":"토","hours":12,"discount":0,"actual":525,"prediction":455.91881525568465,"error":69.08118474431535},{"date":"2026-08-01","store":"잠실역매장","day":"토","hours":11,"discount":10,"actual":405,"prediction":356.7377871637937,"error":48.2622128362063},{"date":"2026-08-01","store":"수원역매장","day":"토","hours":9,"discount":5,"actual":316,"prediction":235.91318912341166,"error":80.08681087658834},{"date":"2026-08-02","store":"강남역매장","day":"일","hours":12,"discount":0,"actual":337,"prediction":382.417817807634,"error":-45.417817807634},{"date":"2026-08-02","store":"양재역매장","day":"일","hours":9,"discount":5,"actual":322,"prediction":254.9861779006948,"error":67.0138220993052},{"date":"2026-08-02","store":"판교역매장","day":"일","hours":11,"discount":0,"actual":504,"prediction":422.89074490502117,"error":81.10925509497883},{"date":"2026-08-02","store":"잠실역매장","day":"일","hours":11,"discount":0,"actual":382,"prediction":322.35538147402525,"error":59.64461852597475},{"date":"2026-08-02","store":"수원역매장","day":"일","hours":10,"discount":10,"actual":323,"prediction":257.6610988302182,"error":65.3389011697818},{"date":"2026-08-03","store":"강남역매장","day":"월","hours":12,"discount":15,"actual":386,"prediction":375.08424203396584,"error":10.91575796603416},{"date":"2026-08-03","store":"양재역매장","day":"월","hours":9,"discount":5,"actual":245,"prediction":213.16181168561857,"error":31.83818831438143},{"date":"2026-08-03","store":"판교역매장","day":"월","hours":12,"discount":10,"actual":471,"prediction":425.699763939384,"error":45.300236060616},{"date":"2026-08-03","store":"잠실역매장","day":"월","hours":11,"discount":0,"actual":373,"prediction":280.5310152589491,"error":92.4689847410509},{"date":"2026-08-03","store":"수원역매장","day":"월","hours":10,"discount":10,"actual":277,"prediction":215.83673261514198,"error":61.16326738485802},{"date":"2026-08-04","store":"강남역매장","day":"화","hours":13,"discount":0,"actual":372,"prediction":366.6388081237973,"error":5.3611918762027},{"date":"2026-08-04","store":"양재역매장","day":"화","hours":10,"discount":0,"actual":266,"prediction":227.71023806972207,"error":38.28976193027793},{"date":"2026-08-04","store":"판교역매장","day":"화","hours":12,"discount":0,"actual":433,"prediction":407.1117352211845,"error":25.8882647788155},{"date":"2026-08-04","store":"잠실역매장","day":"화","hours":11,"discount":0,"actual":396,"prediction":284.9368468350215,"error":111.0631531649785},{"date":"2026-08-04","store":"수원역매장","day":"화","hours":10,"discount":0,"actual":262,"prediction":197.24870389694246,"error":64.75129610305754},{"date":"2026-08-05","store":"강남역매장","day":"수","hours":12,"discount":15,"actual":429,"prediction":381.4951219707073,"error":47.5048780292927},{"date":"2026-08-05","store":"양재역매장","day":"수","hours":10,"discount":0,"actual":323,"prediction":229.71528643039107,"error":93.28471356960893},{"date":"2026-08-05","store":"판교역매장","day":"수","hours":12,"discount":0,"actual":474,"prediction":409.1167835818535,"error":64.8832164181465},{"date":"2026-08-05","store":"잠실역매장","day":"수","hours":11,"discount":0,"actual":373,"prediction":286.94189519569056,"error":86.05810480430944},{"date":"2026-08-05","store":"수원역매장","day":"수","hours":11,"discount":10,"actual":307,"prediction":243.8871375070505,"error":63.1128624929495},{"date":"2026-08-06","store":"강남역매장","day":"목","hours":12,"discount":0,"actual":394,"prediction":351.8333497277051,"error":42.1666502722949},{"date":"2026-08-06","store":"양재역매장","day":"목","hours":9,"discount":10,"actual":341,"prediction":235.89863996790197,"error":105.10136003209803},{"date":"2026-08-06","store":"판교역매장","day":"목","hours":13,"discount":0,"actual":464,"prediction":435.5853267354264,"error":28.4146732645736},{"date":"2026-08-06","store":"잠실역매장","day":"목","hours":11,"discount":0,"actual":407,"prediction":291.77091339409645,"error":115.22908660590355},{"date":"2026-08-06","store":"수원역매장","day":"목","hours":10,"discount":0,"actual":286,"prediction":204.08277045601739,"error":81.91722954398261},{"date":"2026-08-07","store":"강남역매장","day":"금","hours":13,"discount":0,"actual":427,"prediction":391.61030509795296,"error":35.38969490204704},{"date":"2026-08-07","store":"양재역매장","day":"금","hours":11,"discount":10,"actual":377,"prediction":297.3151202933168,"error":79.6848797066832},{"date":"2026-08-07","store":"판교역매장","day":"금","hours":13,"discount":10,"actual":526,"prediction":476.71661744477916,"error":49.28338255522084},{"date":"2026-08-07","store":"잠실역매장","day":"금","hours":11,"discount":0,"actual":375,"prediction":309.90834380917727,"error":65.09165619082273},{"date":"2026-08-07","store":"수원역매장","day":"금","hours":10,"discount":10,"actual":348,"prediction":245.2140611653702,"error":102.7859388346298},{"date":"2026-08-08","store":"강남역매장","day":"토","hours":13,"discount":5,"actual":416,"prediction":426.94281830543343,"error":-10.94281830543343},{"date":"2026-08-08","store":"양재역매장","day":"토","hours":10,"discount":0,"actual":333,"prediction":276.5173181042222,"error":56.4826818957778},{"date":"2026-08-08","store":"판교역매장","day":"토","hours":12,"discount":5,"actual":535,"prediction":467.4157454028207,"error":67.5842545971793},{"date":"2026-08-08","store":"잠실역매장","day":"토","hours":11,"discount":0,"actual":335,"prediction":333.7439268695217,"error":1.2560731304783},{"date":"2026-08-08","store":"수원역매장","day":"토","hours":9,"discount":0,"actual":238,"prediction":224.41625897627566,"error":13.58374102372434},{"date":"2026-08-09","store":"강남역매장","day":"일","hours":12,"discount":10,"actual":504,"prediction":405.411678101906,"error":98.588321898094},{"date":"2026-08-09","store":"양재역매장","day":"일","hours":10,"discount":0,"actual":359,"prediction":265.12877270872576,"error":93.87122729127424},{"date":"2026-08-09","store":"판교역매장","day":"일","hours":12,"discount":0,"actual":504,"prediction":444.53026986018824,"error":59.46973013981176},{"date":"2026-08-09","store":"잠실역매장","day":"일","hours":11,"discount":15,"actual":436,"prediction":356.8461719154333,"error":79.1538280845667},{"date":"2026-08-09","store":"수원역매장","day":"일","hours":9,"discount":0,"actual":261,"prediction":213.0277135807792,"error":47.9722864192208},{"date":"2026-08-10","store":"강남역매장","day":"월","hours":12,"discount":10,"actual":441,"prediction":363.5873118868298,"error":77.4126881131702},{"date":"2026-08-10","store":"양재역매장","day":"월","hours":10,"discount":0,"actual":272,"prediction":223.30440649364957,"error":48.69559350635043},{"date":"2026-08-10","store":"판교역매장","day":"월","hours":11,"discount":0,"actual":445,"prediction":381.066378689945,"error":63.933621310055},{"date":"2026-08-10","store":"잠실역매장","day":"월","hours":12,"discount":0,"actual":357,"prediction":302.17054021411604,"error":54.82945978588396},{"date":"2026-08-10","store":"수원역매장","day":"월","hours":9,"discount":5,"actual":203,"prediction":182.700277512839,"error":20.299722487161},{"date":"2026-08-11","store":"강남역매장","day":"화","hours":11,"discount":0,"actual":433,"prediction":323.35975821346324,"error":109.64024178653676},{"date":"2026-08-11","store":"양재역매장","day":"화","hours":9,"discount":10,"actual":293,"prediction":229.06457340882707,"error":63.93542659117293},{"date":"2026-08-11","store":"판교역매장","day":"화","hours":12,"discount":0,"actual":455,"prediction":407.1117352211845,"error":47.8882647788155},{"date":"2026-08-11","store":"잠실역매장","day":"화","hours":10,"discount":15,"actual":373,"prediction":297.78811232126253,"error":75.21188767873747},{"date":"2026-08-11","store":"수원역매장","day":"화","hours":10,"discount":0,"actual":168,"prediction":197.24870389694246,"error":-29.24870389694246},{"date":"2026-08-12","store":"강남역매장","day":"수","hours":11,"discount":0,"actual":346,"prediction":325.3648065741323,"error":20.6351934258677},{"date":"2026-08-12","store":"양재역매장","day":"수","hours":10,"discount":0,"actual":301,"prediction":229.71528643039107,"error":71.28471356960893},{"date":"2026-08-12","store":"판교역매장","day":"수","hours":11,"discount":10,"actual":495,"prediction":410.4711189209585,"error":84.5288810790415},{"date":"2026-08-12","store":"잠실역매장","day":"수","hours":10,"discount":10,"actual":395,"prediction":288.2962305347956,"error":106.7037694652044},{"date":"2026-08-12","store":"수원역매장","day":"수","hours":10,"discount":0,"actual":245,"prediction":199.2537522576115,"error":45.7462477423885},{"date":"2026-08-13","store":"강남역매장","day":"목","hours":12,"discount":10,"actual":368,"prediction":374.8272100219771,"error":-6.8272100219771},{"date":"2026-08-13","store":"양재역매장","day":"목","hours":9,"discount":10,"actual":299,"prediction":235.89863996790197,"error":63.10136003209803},{"date":"2026-08-13","store":"판교역매장","day":"목","hours":12,"discount":10,"actual":500,"prediction":436.9396620745314,"error":63.0603379254686},{"date":"2026-08-13","store":"잠실역매장","day":"목","hours":10,"discount":0,"actual":496,"prediction":270.13138843892943,"error":225.86861156107057},{"date":"2026-08-13","store":"수원역매장","day":"목","hours":9,"discount":0,"actual":203,"prediction":182.4432455008504,"error":20.5567544991496},{"date":"2026-08-14","store":"강남역매장","day":"금","hours":12,"discount":15,"actual":391,"prediction":404.461570584194,"error":-13.461570584194},{"date":"2026-08-14","store":"양재역매장","day":"금","hours":10,"discount":0,"actual":343,"prediction":252.68173504387778,"error":90.31826495612222},{"date":"2026-08-14","store":"판교역매장","day":"금","hours":12,"discount":0,"actual":463,"prediction":432.0832321953402,"error":30.9167678046598},{"date":"2026-08-14","store":"잠실역매장","day":"금","hours":10,"discount":10,"actual":401,"prediction":311.2626791482823,"error":89.7373208517177},{"date":"2026-08-14","store":"수원역매장","day":"금","hours":11,"discount":10,"actual":291,"prediction":266.8535861205372,"error":24.1464138794628},{"date":"2026-08-15","store":"강남역매장","day":"토","hours":12,"discount":0,"actual":265,"prediction":393.80636320313045,"error":-128.80636320313045},{"date":"2026-08-15","store":"양재역매장","day":"토","hours":10,"discount":0,"actual":373,"prediction":276.5173181042222,"error":96.4826818957778},{"date":"2026-08-15","store":"판교역매장","day":"토","hours":12,"discount":0,"actual":546,"prediction":455.91881525568465,"error":90.08118474431535},{"date":"2026-08-15","store":"잠실역매장","day":"토","hours":11,"discount":10,"actual":435,"prediction":356.7377871637937,"error":78.2622128362063},{"date":"2026-08-15","store":"수원역매장","day":"토","hours":10,"discount":5,"actual":304,"prediction":257.5527140785786,"error":46.4472859214214},{"date":"2026-08-16","store":"강남역매장","day":"일","hours":12,"discount":0,"actual":340,"prediction":382.417817807634,"error":-42.417817807634},{"date":"2026-08-16","store":"양재역매장","day":"일","hours":10,"discount":15,"actual":424,"prediction":299.6195631501338,"error":124.3804368498662},{"date":"2026-08-16","store":"판교역매장","day":"일","hours":12,"discount":10,"actual":538,"prediction":467.52413015446024,"error":70.47586984553976},{"date":"2026-08-16","store":"잠실역매장","day":"일","hours":11,"discount":5,"actual":415,"prediction":333.8523116211613,"error":81.1476883788387},{"date":"2026-08-16","store":"수원역매장","day":"일","hours":10,"discount":0,"actual":238,"prediction":234.66723853594618,"error":3.33276146405382},{"date":"2026-08-17","store":"강남역매장","day":"월","hours":12,"discount":0,"actual":350,"prediction":340.5934515925578,"error":9.4065484074422},{"date":"2026-08-17","store":"양재역매장","day":"월","hours":10,"discount":15,"actual":359,"prediction":257.79519693505756,"error":101.20480306494244},{"date":"2026-08-17","store":"판교역매장","day":"월","hours":13,"discount":5,"actual":483,"prediction":435.842358747415,"error":47.157641252585},{"date":"2026-08-17","store":"잠실역매장","day":"월","hours":10,"discount":0,"actual":343,"prediction":258.89149030378206,"error":84.10850969621794},{"date":"2026-08-17","store":"수원역매장","day":"월","hours":9,"discount":0,"actual":259,"prediction":171.203347365703,"error":87.796652634297},{"date":"2026-08-18","store":"강남역매장","day":"화","hours":12,"discount":0,"actual":269,"prediction":344.9992831686303,"error":-75.9992831686303},{"date":"2026-08-18","store":"양재역매장","day":"화","hours":10,"discount":0,"actual":335,"prediction":227.71023806972207,"error":107.28976193027793},{"date":"2026-08-18","store":"판교역매장","day":"화","hours":13,"discount":5,"actual":459,"prediction":440.2481903234875,"error":18.7518096765125},{"date":"2026-08-18","store":"잠실역매장","day":"화","hours":11,"discount":10,"actual":426,"prediction":307.9307071292935,"error":118.0692928707065},{"date":"2026-08-18","store":"수원역매장","day":"화","hours":10,"discount":0,"actual":242,"prediction":197.24870389694246,"error":44.75129610305754},{"date":"2026-08-19","store":"강남역매장","day":"수","hours":12,"discount":0,"actual":337,"prediction":347.0043315292993,"error":-10.0043315292993},{"date":"2026-08-19","store":"양재역매장","day":"수","hours":9,"discount":0,"actual":296,"prediction":208.0757614752241,"error":87.9242385247759},{"date":"2026-08-19","store":"판교역매장","day":"수","hours":12,"discount":5,"actual":426,"prediction":420.6137137289895,"error":5.3862862710105},{"date":"2026-08-19","store":"잠실역매장","day":"수","hours":12,"discount":0,"actual":365,"prediction":308.5814201508576,"error":56.4185798491424},{"date":"2026-08-19","store":"수원역매장","day":"수","hours":10,"discount":0,"actual":200,"prediction":199.2537522576115,"error":0.7462477423885},{"date":"2026-08-20","store":"강남역매장","day":"목","hours":13,"discount":15,"actual":405,"prediction":407.9636651242802,"error":-2.9636651242802},{"date":"2026-08-20","store":"양재역매장","day":"목","hours":10,"discount":0,"actual":354,"prediction":234.544304628797,"error":119.455695371203},{"date":"2026-08-20","store":"판교역매장","day":"목","hours":12,"discount":0,"actual":448,"prediction":413.9458017802594,"error":34.0541982197406},{"date":"2026-08-20","store":"잠실역매장","day":"목","hours":10,"discount":15,"actual":375,"prediction":304.62217888033746,"error":70.37782111966254},{"date":"2026-08-20","store":"수원역매장","day":"목","hours":10,"discount":0,"actual":232,"prediction":204.08277045601739,"error":27.91722954398261},{"date":"2026-08-21","store":"강남역매장","day":"금","hours":12,"discount":0,"actual":362,"prediction":369.970780142786,"error":-7.970780142786},{"date":"2026-08-21","store":"양재역매장","day":"금","hours":10,"discount":0,"actual":331,"prediction":252.68173504387778,"error":78.31826495612222},{"date":"2026-08-21","store":"판교역매장","day":"금","hours":12,"discount":0,"actual":503,"prediction":432.0832321953402,"error":70.9167678046598},{"date":"2026-08-21","store":"잠실역매장","day":"금","hours":11,"discount":15,"actual":439,"prediction":344.3991342505853,"error":94.6008657494147},{"date":"2026-08-21","store":"수원역매장","day":"금","hours":10,"discount":10,"actual":264,"prediction":245.2140611653702,"error":18.7859388346298},{"date":"2026-08-22","store":"강남역매장","day":"토","hours":12,"discount":0,"actual":388,"prediction":393.80636320313045,"error":-5.80636320313045},{"date":"2026-08-22","store":"양재역매장","day":"토","hours":11,"discount":0,"actual":364,"prediction":298.1568430593893,"error":65.8431569406107},{"date":"2026-08-22","store":"판교역매장","day":"토","hours":12,"discount":5,"actual":532,"prediction":467.4157454028207,"error":64.5842545971793},{"date":"2026-08-22","store":"잠실역매장","day":"토","hours":12,"discount":0,"actual":360,"prediction":355.3834518246888,"error":4.6165481753112},{"date":"2026-08-22","store":"수원역매장","day":"토","hours":9,"discount":15,"actual":228,"prediction":258.90704941768365,"error":-30.90704941768365},{"date":"2026-08-23","store":"강남역매장","day":"일","hours":13,"discount":0,"actual":477,"prediction":404.05734276280094,"error":72.94265723719906},{"date":"2026-08-23","store":"양재역매장","day":"일","hours":10,"discount":0,"actual":317,"prediction":265.12877270872576,"error":51.87122729127424},{"date":"2026-08-23","store":"판교역매장","day":"일","hours":11,"discount":0,"actual":594,"prediction":422.89074490502117,"error":171.10925509497883},{"date":"2026-08-23","store":"잠실역매장","day":"일","hours":10,"discount":10,"actual":317,"prediction":323.7097168131302,"error":-6.7097168131302},{"date":"2026-08-23","store":"수원역매장","day":"일","hours":11,"discount":15,"actual":290,"prediction":290.7975539325212,"error":-0.7975539325212},{"date":"2026-08-24","store":"강남역매장","day":"월","hours":12,"discount":0,"actual":332,"prediction":340.5934515925578,"error":-8.5934515925578},{"date":"2026-08-24","store":"양재역매장","day":"월","hours":9,"discount":10,"actual":357,"prediction":224.65874183275457,"error":132.34125816724543},{"date":"2026-08-24","store":"판교역매장","day":"월","hours":12,"discount":0,"actual":601,"prediction":402.705903645112,"error":198.294096354888},{"date":"2026-08-24","store":"잠실역매장","day":"월","hours":11,"discount":10,"actual":326,"prediction":303.5248755532211,"error":22.4751244467789},{"date":"2026-08-24","store":"수원역매장","day":"월","hours":9,"discount":15,"actual":189,"prediction":205.694137807111,"error":-16.694137807111},{"date":"2026-08-25","store":"강남역매장","day":"화","hours":12,"discount":0,"actual":345,"prediction":344.9992831686303,"error":0.0007168313697},{"date":"2026-08-25","store":"양재역매장","day":"화","hours":11,"discount":10,"actual":348,"prediction":272.3436233191611,"error":75.6563766808389},{"date":"2026-08-25","store":"판교역매장","day":"화","hours":12,"discount":10,"actual":589,"prediction":430.1055955154565,"error":158.8944044845435},{"date":"2026-08-25","store":"잠실역매장","day":"화","hours":11,"discount":5,"actual":332,"prediction":296.43377698215755,"error":35.56622301784245},{"date":"2026-08-25","store":"수원역매장","day":"화","hours":10,"discount":5,"actual":189,"prediction":208.74563404407846,"error":-19.74563404407846},{"date":"2026-08-26","store":"강남역매장","day":"수","hours":12,"discount":0,"actual":320,"prediction":347.0043315292993,"error":-27.0043315292993},{"date":"2026-08-26","store":"양재역매장","day":"수","hours":9,"discount":5,"actual":271,"prediction":219.5726916223601,"error":51.4273083776399},{"date":"2026-08-26","store":"판교역매장","day":"수","hours":12,"discount":10,"actual":490,"prediction":432.1106438761255,"error":57.8893561238745},{"date":"2026-08-26","store":"잠실역매장","day":"수","hours":10,"discount":0,"actual":313,"prediction":265.3023702405236,"error":47.6976297594764},{"date":"2026-08-26","store":"수원역매장","day":"수","hours":10,"discount":0,"actual":208,"prediction":199.2537522576115,"error":8.7462477423885},{"date":"2026-08-27","store":"강남역매장","day":"목","hours":12,"discount":0,"actual":324,"prediction":351.8333497277051,"error":-27.8333497277051},{"date":"2026-08-27","store":"양재역매장","day":"목","hours":10,"discount":0,"actual":232,"prediction":234.544304628797,"error":-2.544304628797},{"date":"2026-08-27","store":"판교역매장","day":"목","hours":13,"discount":15,"actual":547,"prediction":470.07611717683443,"error":76.92388282316557},{"date":"2026-08-27","store":"잠실역매장","day":"목","hours":11,"discount":0,"actual":296,"prediction":291.77091339409645,"error":4.22908660590355},{"date":"2026-08-27","store":"수원역매장","day":"목","hours":9,"discount":0,"actual":208,"prediction":182.4432455008504,"error":25.5567544991496},{"date":"2026-08-28","store":"강남역매장","day":"금","hours":12,"discount":15,"actual":337,"prediction":404.461570584194,"error":-67.461570584194},{"date":"2026-08-28","store":"양재역매장","day":"금","hours":10,"discount":0,"actual":263,"prediction":252.68173504387778,"error":10.31826495612222},{"date":"2026-08-28","store":"판교역매장","day":"금","hours":12,"discount":0,"actual":486,"prediction":432.0832321953402,"error":53.9167678046598},{"date":"2026-08-28","store":"잠실역매장","day":"금","hours":11,"discount":10,"actual":349,"prediction":332.90220410344926,"error":16.09779589655074},{"date":"2026-08-28","store":"수원역매장","day":"금","hours":10,"discount":5,"actual":217,"prediction":233.7171310182342,"error":-16.7171310182342},{"date":"2026-08-29","store":"강남역매장","day":"토","hours":13,"discount":0,"actual":355,"prediction":415.4458881582974,"error":-60.4458881582974},{"date":"2026-08-29","store":"양재역매장","day":"토","hours":11,"discount":5,"actual":344,"prediction":309.65377320652533,"error":34.34622679347467},{"date":"2026-08-29","store":"판교역매장","day":"토","hours":12,"discount":0,"actual":523,"prediction":455.91881525568465,"error":67.08118474431535},{"date":"2026-08-29","store":"잠실역매장","day":"토","hours":11,"discount":0,"actual":356,"prediction":333.7439268695217,"error":22.2560731304783},{"date":"2026-08-29","store":"수원역매장","day":"토","hours":10,"discount":0,"actual":274,"prediction":246.05578393144262,"error":27.94421606855738},{"date":"2026-08-30","store":"강남역매장","day":"일","hours":11,"discount":5,"actual":302,"prediction":372.275222999603,"error":-70.275222999603},{"date":"2026-08-30","store":"양재역매장","day":"일","hours":10,"discount":10,"actual":349,"prediction":288.12263300299776,"error":60.87736699700224},{"date":"2026-08-30","store":"판교역매장","day":"일","hours":12,"discount":10,"actual":541,"prediction":467.52413015446024,"error":73.47586984553976},{"date":"2026-08-30","store":"잠실역매장","day":"일","hours":10,"discount":0,"actual":318,"prediction":300.71585651885823,"error":17.28414348114177},{"date":"2026-08-30","store":"수원역매장","day":"일","hours":10,"discount":15,"actual":305,"prediction":269.1580289773542,"error":35.8419710226458},{"date":"2026-08-31","store":"강남역매장","day":"월","hours":12,"discount":0,"actual":374,"prediction":340.5934515925578,"error":33.4065484074422},{"date":"2026-08-31","store":"양재역매장","day":"월","hours":9,"discount":10,"actual":263,"prediction":224.65874183275457,"error":38.34125816724543},{"date":"2026-08-31","store":"판교역매장","day":"월","hours":12,"discount":10,"actual":419,"prediction":425.699763939384,"error":-6.699763939384},{"date":"2026-08-31","store":"잠실역매장","day":"월","hours":11,"discount":0,"actual":296,"prediction":280.5310152589491,"error":15.4689847410509},{"date":"2026-08-31","store":"수원역매장","day":"월","hours":10,"discount":10,"actual":353,"prediction":215.83673261514198,"error":137.16326738485802}],"coefficients":{"hours":21.639524955166998,"discount":2.2993860294272004,"saturday":53.21291161057266}}</script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const data = JSON.parse($('dashboard-data').textContent);
+  const { stores, weekdays, predictions, coefficients } = data;
+  const shortStore = name => name.replace(/매장$/, '');
+  const decimal = value => value.toFixed(1);
+  const signed = value => `${value < 0 ? '−' : value > 0 ? '+' : ''}${decimal(Math.abs(value))}`;
+  const count = value => `${value}건`;
+  const make = (tag, content = '') => Object.assign(document.createElement(tag), {textContent:content});
+  const ns = 'http://www.w3.org/2000/svg';
+  function svg(tag, attributes = {}, content = '') {
+    const element = document.createElementNS(ns, tag);
+    for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
+    element.textContent = content;
+    return element;
+  }
+
+  const colors = new Map([
+    ['판교역매장','#007b78'], ['강남역매장','#2754ad'], ['잠실역매장','#b7463d'],
+    ['양재역매장','#a77d08'], ['수원역매장','#7c46a3'],
+  ]);
+  const barButtons = [];
+  const heatButtons = [];
+  const heatRows = [];
+  const trainingMax = Math.ceil(Math.max(...stores.map(store => store.average)) / 100) * 100;
+  function selectStore(index) {
+    barButtons.forEach((button, i) => button.setAttribute('aria-pressed', String(index === i)));
+    $('bar-detail').textContent = `${stores[index].name} · ${decimal(stores[index].average)}건`;
+  }
+  function selectWeek(storeIndex, dayIndex) {
+    const store = stores[storeIndex];
+    const day = store.week[dayIndex];
+    heatButtons.forEach((button, i) => button.setAttribute('aria-pressed', String(i === storeIndex * weekdays.length + dayIndex)));
+    $('heat-detail').textContent = `${store.name} ${weekdays[dayIndex]}요일 · ${decimal(day.average)}건 (${day.days}일 평균)`;
+  }
+  const allWeek = stores.flatMap(store => store.week.map(day => day.average));
+  const low = Math.min(...allWeek), high = Math.max(...allWeek);
+  const heatHeader = make('tr');
+  for (const label of ['매장', ...weekdays]) {
+    const heading = make('th', label);
+    heading.scope = 'col';
+    heatHeader.append(heading);
+  }
+  $('heat-head').append(heatHeader);
+  stores.forEach((store, index) => {
+    const bar = make('button');
+    bar.className = 'bar-button';
+    bar.type = 'button';
+    bar.setAttribute('aria-label', `${store.name} 하루 평균 ${decimal(store.average)}건`);
+    const track = make('span');
+    track.className = 'bar-track';
+    const fill = make('span');
+    fill.className = 'bar-fill';
+    fill.style.width = `${store.average / trainingMax * 100}%`;
+    track.append(fill);
+    const value = make('span', decimal(store.average));
+    value.className = 'bar-value';
+    bar.append(make('span', shortStore(store.name)), track, value);
+    bar.addEventListener('click', () => selectStore(index));
+    barButtons.push(bar);
+    $('bars').append(bar);
+
+    const row = make('tr');
+    const heading = make('th', shortStore(store.name));
+    heading.scope = 'row';
+    row.append(heading);
+    store.week.forEach(({average}, dayIndex) => {
+      const cell = row.insertCell();
+      const button = make('button', decimal(average));
+      button.type = 'button';
+      button.className = 'heat-cell';
+      const ratio = (average - low) / (high - low);
+      button.style.setProperty('--cell', `hsl(168 36% ${92 - ratio * 62}%)`);
+      button.style.setProperty('--cell-text', ratio > .81 ? '#fff' : '#0c1d19');
+      button.setAttribute('aria-label', `${store.name} ${weekdays[dayIndex]}요일 평균 ${decimal(average)}건`);
+      button.addEventListener('click', () => selectWeek(index, dayIndex));
+      heatButtons.push(button);
+      cell.append(button);
+    });
+    $('heat-body').append(row);
+    heatRows.push(row);
+  });
+  const scale = make('div');
+  scale.className = 'bar-scale subtle';
+  scale.append(make('span','0'),make('span',String(trainingMax)));
+  $('bars').append(scale);
+  const busiest = stores[0], quietest = stores.at(-1);
+  const overallAverage = stores.reduce((sum, store) => sum + store.average, 0) / stores.length;
+  function renderTraining(name) {
+    const index = name ? stores.findIndex(store => store.name === name) : 0;
+    barButtons.forEach((button, i) => button.hidden = Boolean(name) && i !== index);
+    heatRows.forEach((row, i) => row.hidden = Boolean(name) && i !== index);
+    const store = stores[index];
+    const peak = store.week.reduce((best, day, i) => day.average > store.week[best].average ? i : best, 0);
+    const quiet = store.week.reduce((least, day, i) => day.average < store.week[least].average ? i : least, 0);
+    $('training-period').textContent = `학습 데이터 · 2024.11.01~2026.05.31 · ${name ? `${name} 577일` : '매장당 577일'}`;
+    $('bar-insight').textContent = name
+      ? `하루 평균 ${decimal(store.average)}건입니다. 5개 매장의 하루 평균은 ${decimal(overallAverage)}건입니다.`
+      : `${shortStore(busiest.name)}이 ${decimal(busiest.average)}건으로 가장 많고, ${shortStore(quietest.name)}은 ${decimal(quietest.average)}건으로 가장 적었습니다.`;
+    $('heat-insight').textContent = name
+      ? `${weekdays[peak]}요일이 ${decimal(store.week[peak].average)}건으로 가장 많고, ${weekdays[quiet]}요일은 ${decimal(store.week[quiet].average)}건으로 가장 적었습니다.`
+      : '5개 매장 모두 토요일 평균 주문이 가장 많았습니다.';
+    selectStore(index);
+    selectWeek(index, peak);
+  }
+
+  const lowAxis = 100, highAxis = 700;
+  const frame = {left:112, right:610, top:21, bottom:359};
+  const x = value => frame.left + (value - lowAxis) / (highAxis - lowAxis) * (frame.right - frame.left);
+  const y = value => frame.bottom - (value - lowAxis) / (highAxis - lowAxis) * (frame.bottom - frame.top);
+  const plot = $('scatter');
+  for (let tick = lowAxis; tick <= highAxis; tick += 100) {
+    plot.append(svg('line', {class:'grid', x1:x(tick), x2:x(tick), y1:frame.top, y2:frame.bottom}),
+      svg('line', {class:'grid', x1:frame.left, x2:frame.right, y1:y(tick), y2:y(tick)}),
+      svg('text', {x:x(tick), y:385, 'text-anchor':'middle'}, String(tick)),
+      svg('text', {x:frame.left - 10, y:y(tick) + 5, 'text-anchor':'end'}, decimal(tick)));
+  }
+  plot.append(svg('rect', {class:'axis', x:frame.left, y:frame.top, width:frame.right-frame.left, height:frame.bottom-frame.top, fill:'none'}),
+    svg('line', {class:'reference', x1:x(lowAxis), y1:y(lowAxis), x2:x(highAxis), y2:y(highAxis)}),
+    svg('text', {x:(frame.left+frame.right)/2, y:421, 'text-anchor':'middle'}, '실제 주문건수 (건)'),
+    svg('text', {transform:'translate(32 190) rotate(-90)', 'text-anchor':'middle'}, '예측 주문건수 (건)'));
+  const pointLayer = svg('g');
+  plot.append(pointLayer);
+
+  const options = $('store-filter');
+  for (const store of stores) {
+    const option = make('option', store.name);
+    option.value = store.name;
+    options.append(option);
+  }
+  const pointNodes = new Map();
+  const rankNodes = new Map();
+  let activePoint;
+  const keyFor = row => `${row.date}|${row.store}`;
+  function showPoint(row) {
+    const previous = activePoint;
+    activePoint = keyFor(row);
+    if (pointNodes.has(previous)) {
+      pointNodes.get(previous).classList.remove('active');
+      pointNodes.get(previous).setAttribute('tabindex', '-1');
+    }
+    rankNodes.get(previous)?.classList.remove('current');
+    const mark = pointNodes.get(activePoint);
+    mark.classList.add('active');
+    mark.setAttribute('tabindex', '0');
+    rankNodes.get(activePoint)?.classList.add('current');
+    $('point-date').textContent = `${row.date} (${row.day}) · ${row.store}`;
+    $('point-actual').textContent = count(row.actual);
+    $('point-prediction').textContent = count(decimal(row.prediction));
+    $('point-error').textContent = count(signed(row.error));
+    $('point-error').className = row.error > 0 ? 'positive' : row.error < 0 ? 'negative' : '';
+  }
+
+  const seriesPlot = $('series');
+  const dateControl = $('series-date');
+  const axis = {left:97, right:618, top:30, bottom:211};
+  let dateSeries = [];
+  let dateMarker;
+  const mean = (rows, get) => rows.reduce((sum, row) => sum + get(row), 0) / rows.length;
+  const seriesX = i => axis.left + (axis.right - axis.left) * i / (dateSeries.length - 1);
+  function showSeriesDate() {
+    const index = Number(dateControl.value);
+    const day = dateSeries[index];
+    dateMarker.setAttribute('x1', seriesX(index));
+    dateMarker.setAttribute('x2', seriesX(index));
+    dateControl.setAttribute('aria-valuetext', day.date);
+    $('series-day').textContent = `${day.date} · 실제 ${day.actual}건 · 예측 ${decimal(day.prediction)}건 · 오차 ${signed(day.error)}건`;
+  }
+  dateControl.addEventListener('input', showSeriesDate);
+  seriesPlot.addEventListener('click', event => {
+    const location = new DOMPoint(event.clientX, event.clientY).matrixTransform(seriesPlot.getScreenCTM().inverse());
+    if (location.x < axis.left || location.x > axis.right || location.y < axis.top || location.y > axis.bottom) return;
+    dateControl.value = Math.round((location.x - axis.left) / (axis.right - axis.left) * (dateSeries.length - 1));
+    showSeriesDate();
+  });
+
+  function renderSeries(rows, store) {
+    const byDate = new Map();
+    for (const row of rows) {
+      if (!byDate.has(row.date)) byDate.set(row.date, {date:row.date, actual:0, prediction:0, error:0});
+      const daily = byDate.get(row.date);
+      daily.actual += row.actual;
+      daily.prediction += row.prediction;
+      daily.error += row.error;
+    }
+    dateSeries = [...byDate.values()].sort((a,b) => a.date.localeCompare(b.date));
+    dateControl.max = dateSeries.length - 1;
+    const tickStep = store ? 100 : 500;
+    const maxY = store ? highAxis : Math.ceil(Math.max(...dateSeries.map(day => Math.max(day.actual, day.prediction))) / tickStep) * tickStep;
+    const seriesY = value => axis.bottom - value / maxY * (axis.bottom - axis.top);
+    seriesPlot.replaceChildren(svg('text', {x:axis.left, y:17}, '주문건수 (건)'));
+    for (let tick = 0; tick <= maxY; tick += tickStep) {
+      const vertical = seriesY(tick);
+      seriesPlot.append(svg('line', {class:'grid', x1:axis.left, x2:axis.right, y1:vertical, y2:vertical}),
+        svg('text', {x:axis.left-9, y:vertical+5, 'text-anchor':'end'}, String(tick)));
+    }
+    for (const index of [0, 30, 61, dateSeries.length - 1]) {
+      const position = seriesX(index);
+      const anchor = index === 0 ? 'start' : index === dateSeries.length - 1 ? 'end' : 'middle';
+      seriesPlot.append(svg('line', {class:'grid', x1:position, x2:position, y1:axis.top, y2:axis.bottom}),
+        svg('text', {x:position, y:239, 'text-anchor':anchor}, dateSeries[index].date.slice(5).replace('-', '.')));
+    }
+    seriesPlot.append(svg('text', {x:(axis.left+axis.right)/2, y:267, 'text-anchor':'middle'}, '날짜'));
+    for (const [field, className] of [['actual','actual-line'],['prediction','prediction-line']]) {
+      const points = dateSeries.map((day, index) => `${seriesX(index).toFixed(2)},${seriesY(day[field]).toFixed(2)}`).join(' ');
+      seriesPlot.append(svg('polyline', {class:className, points}));
+    }
+    dateMarker = svg('line', {class:'guide', y1:axis.top, y2:axis.bottom});
+    seriesPlot.append(dateMarker);
+    $('series-scope').textContent = store || '전체 매장 · 날짜별 5개 매장 합계';
+    $('average-actual').textContent = count(decimal(mean(dateSeries, day => day.actual)));
+    $('average-forecast').textContent = count(decimal(mean(dateSeries, day => day.prediction)));
+    $('average-absolute-error').textContent = count(decimal(mean(dateSeries, day => Math.abs(day.error))));
+    const underDays = dateSeries.filter(day => day.error > 0).length;
+    const overDays = dateSeries.filter(day => day.error < 0).length;
+    const label = store || '전체 매장 합계';
+    $('series-insight').textContent = `${label}의 과소예측은 ${underDays}일, 과대예측은 ${overDays}일입니다.`;
+    showSeriesDate();
+  }
+
+  function renderEvaluation() {
+    const store = options.value;
+    const rows = predictions.filter(row => !store || row.store === store);
+    const ranked = [...rows].sort((a,b) => Math.abs(b.error) - Math.abs(a.error));
+    $('evaluation-period').textContent = `평가 데이터 · 2026.06.01~2026.08.31 · ${store || '전체 매장'} ${rows.length}건`;
+    renderSeries(rows, store);
+    pointNodes.clear();
+    rankNodes.clear();
+    pointLayer.replaceChildren();
+    rows.forEach((row, index) => {
+      const point = svg('circle', {class:'dot', cx:x(row.actual), cy:y(row.prediction), r:4.2, fill:colors.get(row.store),
+        tabindex:-1, role:'button', 'aria-label':`${row.date} ${row.store} 실제 ${row.actual}건, 예측 ${decimal(row.prediction)}건, 오차 ${signed(row.error)}건`});
+      point.addEventListener('pointerenter', () => showPoint(row));
+      point.addEventListener('click', () => showPoint(row));
+      point.addEventListener('focus', () => showPoint(row));
+      point.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showPoint(row); return; }
+        const offset = {'ArrowLeft':-1,'ArrowDown':-1,'ArrowRight':1,'ArrowUp':1}[event.key];
+        if (offset === undefined) return;
+        event.preventDefault();
+        const target = rows[(index + offset + rows.length) % rows.length];
+        pointNodes.get(keyFor(target)).focus();
+      });
+      pointNodes.set(keyFor(row), point);
+      pointLayer.append(point);
+    });
+    const under = rows.filter(row => row.error > 0).length;
+    const over = rows.filter(row => row.error < 0).length;
+    const same = rows.length - under - over;
+    $('scatter-insight').textContent = `${rows.length}건 중 과소예측 ${under}건, 과대예측 ${over}건${same ? `, 일치 ${same}건` : ''}입니다.`;
+    $('rank-scope').textContent = store || '전체 매장';
+    const fragment = document.createDocumentFragment();
+    ranked.slice(0,10).forEach((row, index) => {
+      const tr = make('tr');
+      tr.insertCell().textContent = index + 1;
+      const trigger = make('button', row.date);
+      trigger.type = 'button';
+      trigger.className = 'view-point';
+      trigger.setAttribute('aria-label', `${row.date} ${row.store} 산점도에서 보기`);
+      trigger.addEventListener('click', () => pointNodes.get(keyFor(row)).focus());
+      tr.insertCell().append(trigger);
+      for (const value of [row.store,row.day,`${row.hours}시간`,`${row.discount}%`,row.actual,decimal(row.prediction),signed(row.error)]) tr.insertCell().textContent = value;
+      tr.lastElementChild.className = row.error > 0 ? 'positive' : row.error < 0 ? 'negative' : '';
+      rankNodes.set(keyFor(row), tr);
+      fragment.append(tr);
+    });
+    $('rank-body').replaceChildren(fragment);
+    const legend = $('legend');
+    legend.replaceChildren();
+    for (const [name,color] of colors) {
+      if (store && store !== name) continue;
+      const label = make('span');
+      const sample = make('i');
+      sample.style.setProperty('--swatch', color);
+      label.append(sample, shortStore(name));
+      legend.append(label);
+    }
+    const guide = make('span');
+    const dash = make('i');
+    dash.className = 'reference-icon';
+    guide.append(dash, '실제 = 예측');
+    legend.append(guide);
+    showPoint(ranked[0]);
+  }
+  function renderDashboard() {
+    renderTraining(options.value);
+    renderEvaluation();
+  }
+  options.addEventListener('change', renderDashboard);
+  renderDashboard();
+  $('coef-hours').textContent = count(signed(coefficients.hours));
+  $('coef-discount').textContent = count(signed(coefficients.discount * 10));
+  $('coef-saturday').textContent = count(signed(coefficients.saturday));
+})();
+</script>
+</body>
+</html>
