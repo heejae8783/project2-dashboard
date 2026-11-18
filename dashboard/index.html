@@ -43,16 +43,24 @@
       outline: 3px solid #194d92;
       outline-offset: 3px;
     }
+    a { text-decoration: none; }
+    .dashboard-title { text-decoration: underline; }
+    .dashboard-description {
+      display: block;
+      margin-top: 0.2rem;
+      color: #47556a;
+      font-size: 0.925rem;
+    }
   </style>
 </head>
 <body>
   <main>
     <h1>프로젝트 2 대시보드</h1>
     <ul>
-      <li><a href="inspection-eda/inspection_dashboard.html">02회차 입고검사 품질 현황</a></li>
-      <li><a href="supplier-review/supplier_review.html">03회차 협력사 품질 검토</a></li>
-      <li><a href="correlation-review/correlation_dashboard.html">04회차 협력사 생산조건 검토</a></li>
-      <li><a href="order-forecast/orders_dashboard.html">05회차-매장 주문량 예측 검토</a></li>
+      <li><a href="inspection-eda/inspection_dashboard.html"><span class="dashboard-title">02회차 입고검사 품질 현황</span><span class="dashboard-description">협력사·주차별 검사량, 불량률, 불량 유형을 봅니다.</span></a></li>
+      <li><a href="supplier-review/supplier_review.html"><span class="dashboard-title">03회차 협력사 품질 검토</span><span class="dashboard-description">A·B·C사의 치수 분포와 불량 현황을 비교합니다.</span></a></li>
+      <li><a href="correlation-review/correlation_dashboard.html"><span class="dashboard-title">04회차 협력사 생산조건 검토</span><span class="dashboard-description">가공시간·공구 사용량과 치수의 관계를 살펴봅니다.</span></a></li>
+      <li><a href="order-forecast/orders_dashboard.html"><span class="dashboard-title">05회차-매장 주문량 예측 검토</span><span class="dashboard-description">매장·요일별 주문 현황과 실제·예측 주문건수의 차이를 살펴봅니다.</span></a></li>
     </ul>
   </main>
 </body>
