@@ -5,64 +5,185 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>프로젝트 2 대시보드</title>
   <style>
+    :root {
+      color-scheme: light;
+      --ink: #142b39;
+      --muted: #49606c;
+      --line: #d9e4e6;
+      --teal: #11655a;
+    }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      background: #f6f8fb;
-      color: #172337;
-      font: 1rem/1.6 system-ui, sans-serif;
+      background: #f2f6f5;
+      color: var(--ink);
+      font: 1rem/1.65 Inter, "Malgun Gothic", system-ui, sans-serif;
+      word-break: keep-all;
     }
     main {
-      max-width: 40rem;
+      max-width: 72rem;
       margin: 0 auto;
-      padding: clamp(2rem, 8vw, 5rem) 1.25rem;
+      padding: clamp(1rem, 5vw, 3.75rem) clamp(1rem, 4vw, 2rem);
+    }
+    .intro {
+      padding: clamp(1.55rem, 5vw, 3.35rem);
+      border-radius: 1.25rem;
+      background: linear-gradient(115deg, #142836 15%, #19464a);
+      color: #fff;
+    }
+    .project {
+      margin: 0 0 0.65rem;
+      color: #a9e4d4;
+      font-size: 0.875rem;
+      font-weight: 750;
+      letter-spacing: 0.025em;
     }
     h1 {
-      margin: 0 0 1.25rem;
-      font-size: clamp(1.65rem, 5vw, 2.3rem);
-    }
-    ul {
-      display: grid;
-      gap: 0.75rem;
       margin: 0;
+      font-size: clamp(1.85rem, 4.8vw, 3.15rem);
+      line-height: 1.2;
+      letter-spacing: -0.045em;
+    }
+    .intro-description {
+      max-width: 38rem;
+      margin: 0.9rem 0 0;
+      color: #dcebe9;
+    }
+    .dashboard-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+      margin: 1.25rem 0 0;
       padding: 0;
       list-style: none;
     }
-    a {
-      display: block;
-      padding: 1rem 1.25rem;
-      border: 1px solid #d5deea;
-      border-radius: 0.5rem;
+    .dashboard-link {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      height: 100%;
+      padding: clamp(1.15rem, 2.8vw, 1.65rem);
+      border: 1px solid var(--line);
+      border-radius: 1rem;
       background: #fff;
-      color: #194d92;
-      text-underline-offset: 0.2em;
+      color: inherit;
+      text-decoration: none;
+      transition: border-color 160ms ease, box-shadow 160ms ease;
     }
-    a:hover {
-      background: #eef4fd;
+    .dashboard-link:hover {
+      border-color: #82aaa3;
+      box-shadow: 0 0.4rem 1.1rem #142b3912;
     }
-    a:focus-visible {
-      outline: 3px solid #194d92;
+    .dashboard-link:focus-visible {
+      outline: 3px solid var(--teal);
       outline-offset: 3px;
     }
-    a { text-decoration: none; }
-    .dashboard-title { text-decoration: underline; }
-    .dashboard-description {
-      display: block;
-      margin-top: 0.2rem;
-      color: #47556a;
-      font-size: 0.925rem;
+    .session {
+      padding: 0.15rem 0.65rem;
+      border-radius: 2rem;
+      background: #e4f3ee;
+      color: var(--teal);
+      font-size: 0.84rem;
+      font-weight: 750;
+    }
+    h2 {
+      margin: 0.75rem 0 0;
+      font-size: 1.2rem;
+      line-height: 1.35;
+      letter-spacing: -0.035em;
+    }
+    .description {
+      margin: 0.5rem 0 1.25rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .open {
+      margin-top: auto;
+      color: var(--teal);
+      font-size: 0.9rem;
+      font-weight: 750;
+    }
+    .dashboard-link:hover .open {
+      text-decoration: underline;
+      text-underline-offset: 0.2em;
+    }
+    .data-note {
+      margin: 1.4rem 0 0;
+      padding: 0.85rem 0 0;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    .data-note strong { color: var(--ink); }
+    @media (max-width: 46rem) {
+      .dashboard-list { grid-template-columns: 1fr; }
+      .description { margin-bottom: 0.8rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .dashboard-link { transition: none; }
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>프로젝트 2 대시보드</h1>
-    <ul>
-      <li><a href="inspection-eda/inspection_dashboard.html"><span class="dashboard-title">02회차 입고검사 품질 현황</span><span class="dashboard-description">협력사·주차별 검사량, 불량률, 불량 유형을 봅니다.</span></a></li>
-      <li><a href="supplier-review/supplier_review.html"><span class="dashboard-title">03회차 협력사 품질 검토</span><span class="dashboard-description">A·B·C사의 치수 분포와 불량 현황을 비교합니다.</span></a></li>
-      <li><a href="correlation-review/correlation_dashboard.html"><span class="dashboard-title">04회차 협력사 생산조건 검토</span><span class="dashboard-description">가공시간·공구 사용량과 치수의 관계를 살펴봅니다.</span></a></li>
-      <li><a href="order-forecast/orders_dashboard.html"><span class="dashboard-title">05회차-매장 주문량 예측 검토</span><span class="dashboard-description">매장·요일별 주문 현황과 실제·예측 주문건수의 차이를 살펴봅니다.</span></a></li>
-      <li><a href="order-forecast-06/orders_dashboard_06.html"><span class="dashboard-title">06회차-매장 주문량 예측 검토</span><span class="dashboard-description">네 모델의 예측오차와 행사일·비행사일 성능을 비교합니다.</span></a></li>
+    <header class="intro">
+      <p class="project">프로젝트 2 · 운영 데이터 분석</p>
+      <h1>운영 데이터 분석 대시보드</h1>
+      <p class="intro-description">품질 현황과 주문량 예측, 배송 지연 모델을 회차별로 살펴보고 업무 점검에 활용합니다.</p>
+    </header>
+
+    <ul class="dashboard-list" aria-label="회차별 대시보드">
+      <li>
+        <a class="dashboard-link" href="inspection-eda/inspection_dashboard.html" aria-labelledby="session-02 title-02" aria-describedby="desc-02">
+          <span class="session" id="session-02">02회차</span>
+          <h2 id="title-02">검사·불량 현황</h2>
+          <p class="description" id="desc-02">협력사·주차별 검사량, 불량률, 불량 유형을 봅니다.</p>
+          <span class="open" aria-hidden="true">대시보드 열기 →</span>
+        </a>
+      </li>
+      <li>
+        <a class="dashboard-link" href="supplier-review/supplier_review.html" aria-labelledby="session-03 title-03" aria-describedby="desc-03">
+          <span class="session" id="session-03">03회차</span>
+          <h2 id="title-03">협력사 품질 검토</h2>
+          <p class="description" id="desc-03">A·B·C사의 치수 분포와 불량 현황을 비교합니다.</p>
+          <span class="open" aria-hidden="true">대시보드 열기 →</span>
+        </a>
+      </li>
+      <li>
+        <a class="dashboard-link" href="correlation-review/correlation_dashboard.html" aria-labelledby="session-04 title-04" aria-describedby="desc-04">
+          <span class="session" id="session-04">04회차</span>
+          <h2 id="title-04">협력사 생산조건 검토</h2>
+          <p class="description" id="desc-04">가공시간·공구 사용량과 치수의 관계를 살펴봅니다.</p>
+          <span class="open" aria-hidden="true">대시보드 열기 →</span>
+        </a>
+      </li>
+      <li>
+        <a class="dashboard-link" href="order-forecast/orders_dashboard.html" aria-label="05회차-매장 주문량 예측 검토" aria-describedby="desc-05">
+          <span class="session" id="session-05">05회차</span>
+          <h2 id="title-05">매장 주문량 예측 검토</h2>
+          <p class="description" id="desc-05">매장·요일별 주문 현황과 실제·예측 주문건수의 차이를 살펴봅니다.</p>
+          <span class="open" aria-hidden="true">대시보드 열기 →</span>
+        </a>
+      </li>
+      <li>
+        <a class="dashboard-link" href="order-forecast-06/orders_dashboard_06.html" aria-label="06회차-매장 주문량 예측 검토" aria-describedby="desc-06">
+          <span class="session" id="session-06">06회차</span>
+          <h2 id="title-06">매장 주문량 예측 검토</h2>
+          <p class="description" id="desc-06">네 모델의 예측오차와 행사일·비행사일 성능을 비교합니다.</p>
+          <span class="open" aria-hidden="true">대시보드 열기</span>
+        </a>
+      </li>
+      <li>
+        <a class="dashboard-link" href="delivery-model-review/delivery_model_review.html" aria-labelledby="session-10 title-10" aria-describedby="desc-10">
+          <span class="session" id="session-10">10회차</span>
+          <h2 id="title-10">배송 지연 모델 비교</h2>
+          <p class="description" id="desc-10">네 모델의 성능·점검 물량을 비교하고, 확률순 우선 점검 주문을 확인합니다.</p>
+          <span class="open" aria-hidden="true">대시보드 열기</span>
+        </a>
+      </li>
     </ul>
+
+    <p class="data-note"><strong>데이터 기준</strong> · 각 대시보드는 해당 회차의 데이터를 HTML에 저장합니다. 원본 CSV를 수정해도 이 화면의 데이터에는 자동 반영되지 않습니다.</p>
   </main>
 </body>
 </html>
